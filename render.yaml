@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: moneybank-server
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_URL
+        value: https://moneybank.vercel.app   # substituir pelo URL real da Vercel
