@@ -8,20 +8,39 @@ const TY = {
   reset:   { Icon:RefreshCw,      color:'#fbbf24', bg:'rgba(251,191,36,0.08)', bd:'rgba(251,191,36,0.15)' },
 };
 function time(iso){ try{return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}catch{return''} }
-export default function TransactionHistory({history,myName}){
-  if(!history?.length) return (
+
+/**
+ * @param {object[]} history - full transaction history
+ * @param {string}   [myId]  - if provided, filters to only show entries involving this player (personal view)
+ * @param {string}   [myName] - fallback name-based filter when ID not present
+ */
+export default function TransactionHistory({history, myId, myName}){
+  const entries = myId
+    ? [...(history??[])].filter(e => e.fromId === myId || e.toId === myId)
+    : [...(history??[])];
+
+  if(!entries.length) return (
     <div style={{textAlign:'center',padding:'2.5rem 0'}}>
       <div style={{fontSize:'2.5rem',marginBottom:'0.5rem'}}>📋</div>
-      <div style={{color:'#2d5231',fontWeight:600,fontSize:'0.875rem'}}>Nenhuma transação ainda</div>
+      <div style={{color:'#2d5231',fontWeight:600,fontSize:'0.875rem'}}>
+        {myId ? 'Nenhuma transação na tua conta ainda' : 'Nenhuma transação ainda'}
+      </div>
     </div>
   );
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
-      {[...history].reverse().map((e,i)=>{
-        const c=TY[e.type]??TY.transfer, {Icon}=c;
-        const me=myName&&(e.fromName===myName||e.toName===myName);
+      {[...entries].reverse().map((e,i)=>{
+        // Personal view: colour-code by direction
+        let c = TY[e.type] ?? TY.transfer;
+        if (myId) {
+          if (e.toId === myId)   c = TY.credit;   // money came in
+          if (e.fromId === myId) c = TY.debit;    // money went out
+        }
+        const {Icon} = c;
+        const highlight = myId || (myName && (e.fromName===myName || e.toName===myName));
         return (
-          <div key={e.id??i} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem 1rem',borderRadius:'0.75rem',background:me?'linear-gradient(135deg,rgba(16,42,18,0.9),rgba(10,28,12,0.9))':'rgba(13,31,16,0.6)',border:`1px solid ${me?'rgba(74,222,128,0.2)':'var(--green-border)'}`}}>
+          <div key={e.id??i} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.75rem 1rem',borderRadius:'0.75rem',background:highlight?'linear-gradient(135deg,rgba(16,42,18,0.9),rgba(10,28,12,0.9))':'rgba(13,31,16,0.6)',border:`1px solid ${highlight?'rgba(74,222,128,0.2)':'var(--green-border)'}`}}>
             <div style={{width:'2rem',height:'2rem',borderRadius:'0.5rem',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,background:c.bg,border:`1px solid ${c.bd}`}}>
               <Icon style={{width:'0.875rem',height:'0.875rem',color:c.color}}/>
             </div>

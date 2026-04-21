@@ -19,7 +19,12 @@ export default function Home() {
   const [roomCode, setRoomCode] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [avatar, setAvatar] = useState(PIN_OPTIONS[0].id);
+  const [playerColor, setPlayerColor] = useState(PIN_OPTIONS[0].color);
   const [customEmoji, setCustomEmoji] = useState('');
+  const [customColor, setCustomColor] = useState('#ef4444');
+
+  const selectPin = (pin) => { setAvatar(pin.id); setPlayerColor(pin.color); };
+  const isCustom = avatar === CUSTOM_PIN_ID;
 
   const handleCreate = async e => {
     e.preventDefault(); setErr('');
@@ -36,8 +41,9 @@ export default function Home() {
     if (code.length !== 6) return setErr('O código tem 6 caracteres.');
     const name = playerName.trim();
     if (!name) return setErr('Insere o teu nome.');
-    const effectiveAvatar = avatar === CUSTOM_PIN_ID ? (customEmoji.trim().slice(0,2) || '🎮') : avatar;
-    try { await joinRoom(code, name, effectiveAvatar); } catch(e) { setErr(e.message); }
+    const effectiveAvatar = isCustom ? (customEmoji.trim().slice(0,2) || '\u{1F3AE}') : avatar;
+    const effectiveColor  = isCustom ? customColor : playerColor;
+    try { await joinRoom(code, name, effectiveAvatar, effectiveColor); } catch(e) { setErr(e.message); }
   };
 
   const sw = m => { setMode(m); setErr(''); };
@@ -139,20 +145,27 @@ export default function Home() {
                   {PIN_OPTIONS.map(p=>{
                     const on=avatar===p.id;
                     return (
-                      <button key={p.id} type="button" onClick={()=>setAvatar(p.id)} title={p.label}
+                      <button key={p.id} type="button" onClick={()=>selectPin(p)} title={p.label}
                         style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem 0',borderRadius:'0.75rem',cursor:'pointer',transition:'all 0.15s',border:'none',...(on?{background:p.color+'22',border:`2px solid ${p.color}`,transform:'scale(1.08)'}:{background:'rgba(255,255,255,0.03)',border:'2px solid transparent'})}}>
                         <PinSVG color={p.color} size={28}/>
                       </button>
                     );
                   })}
                   <button type="button" onClick={()=>setAvatar(CUSTOM_PIN_ID)} title="Personalizado"
-                    style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem 0',borderRadius:'0.75rem',cursor:'pointer',transition:'all 0.15s',border:'none',fontSize:'1.5rem',...(avatar===CUSTOM_PIN_ID?{background:'rgba(245,158,11,0.15)',border:'2px solid var(--gold)',transform:'scale(1.08)'}:{background:'rgba(255,255,255,0.03)',border:'2px solid transparent'})}}>
+                    style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem 0',borderRadius:'0.75rem',cursor:'pointer',transition:'all 0.15s',border:'none',fontSize:'1.5rem',...(isCustom?{background:'rgba(245,158,11,0.15)',border:'2px solid var(--gold)',transform:'scale(1.08)'}:{background:'rgba(255,255,255,0.03)',border:'2px solid transparent'})}}>
                     ✏️
                   </button>
                 </div>
-                {avatar===CUSTOM_PIN_ID&&(
-                  <input type="text" value={customEmoji} onChange={e=>setCustomEmoji(e.target.value.slice(0,2))} placeholder="Escreve um emoji..." maxLength={2} autoFocus
-                    className="field" style={{marginTop:'0.5rem',textAlign:'center',fontSize:'2rem',letterSpacing:'0.25em'}}/>
+                {isCustom&&(
+                  <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem',alignItems:'center'}}>
+                    <input type="text" value={customEmoji} onChange={e=>setCustomEmoji(e.target.value.slice(0,2))} placeholder="Emoji..." maxLength={2} autoFocus
+                      className="field" style={{flex:1,textAlign:'center',fontSize:'2rem',letterSpacing:'0.25em',padding:'0.5rem'}}/>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.25rem'}}>
+                      <label style={{fontSize:'0.5625rem',fontWeight:700,color:'#4ade80',textTransform:'uppercase',letterSpacing:'0.08em'}}>Cor</label>
+                      <input type="color" value={customColor} onChange={e=>setCustomColor(e.target.value)}
+                        style={{width:'3rem',height:'3rem',border:'2px solid rgba(255,255,255,0.15)',borderRadius:'0.5rem',cursor:'pointer',background:'none',padding:'2px'}}/>
+                    </div>
+                  </div>
                 )}
               </div>
               <button type="submit" disabled={isConnecting} className="btn-green">

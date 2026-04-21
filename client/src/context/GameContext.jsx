@@ -7,7 +7,8 @@ const initialState = {
   roomCode: null,
   mySocketId: null,       // tracks current socket.id so we can locate ourselves in gameState
   currentPlayer: null,    // own player object (kept in sync with gameState)
-  gameState: null,        // { roomCode, players, history, startingBalance, status }
+  gameState: null,        // { roomCode, players, history, pendingTransfers, startingBalance, status }
+  pendingTransfers: [],   // kept in sync from gameState for easy access
   toasts: [],
   isConnecting: false,
   connectionError: null,
@@ -35,9 +36,19 @@ function reducer(state, action) {
       return {
         ...state,
         gameState,
+        pendingTransfers: gameState.pendingTransfers ?? state.pendingTransfers,
         currentPlayer: updated ?? state.currentPlayer,
       };
     }
+
+    case 'ADD_PENDING_TRANSFER':
+      return { ...state, pendingTransfers: [...state.pendingTransfers, action.payload] };
+
+    case 'REMOVE_PENDING_TRANSFER':
+      return { ...state, pendingTransfers: state.pendingTransfers.filter((r) => r.requestId !== action.payload) };
+
+    case 'CANCEL_PENDING_TRANSFERS':
+      return { ...state, pendingTransfers: state.pendingTransfers.filter((r) => !action.payload.includes(r.requestId)) };
 
     case 'ADD_TOAST':
       return { ...state, toasts: [...state.toasts, action.payload] };
@@ -87,7 +98,20 @@ export function GameProvider({ children }) {
     const onReceivedPayment = ({ fromName, amount }) => {
       addToast(`💰 Recebeste M$${Number(amount).toLocaleString('pt-BR')} de ${fromName}!`, 'success');
     };
+    const onNewTransferRequest = (req) => {
+      dispatch({ type: 'ADD_PENDING_TRANSFER', payload: req });
+      addToast(`\u{1F4F3} ${req.fromName} quer pagar M$${Number(req.amount).toLocaleString('pt-BR')} a ${req.toName}`, 'info', 6000);
+    };
 
+    const onNotification = ({ type, message }) => {
+      const toastType = type === 'debit' ? 'warning' : type === 'credit' ? 'success' : type === 'error' ? 'error' : 'info';
+      addToast(message, toastType, 5000);
+    };
+
+    const onTransfersCancelled = ({ requestIds, playerName }) => {
+      dispatch({ type: 'CANCEL_PENDING_TRANSFERS', payload: requestIds });
+      addToast(`\u{1F6AB} Pedidos de ${playerName} cancelados (saiu da sala)`, 'warning');
+    };
     const onPlayerJoined = ({ playerName }) => {
       addToast(`🎲 ${playerName} entrou na sala`, 'info');
     };
@@ -120,6 +144,9 @@ export function GameProvider({ children }) {
     socket.on('connect',              onConnect);
     socket.on('update_game_state',    onUpdateGameState);
     socket.on('received_payment',     onReceivedPayment);
+    socket.on('new_transfer_request', onNewTransferRequest);
+    socket.on('notification',         onNotification);
+    socket.on('transfers_cancelled',  onTransfersCancelled);
     socket.on('player_joined',        onPlayerJoined);
     socket.on('player_rejoined',      onPlayerRejoined);
     socket.on('player_disconnected',  onPlayerDisconnected);
@@ -131,6 +158,9 @@ export function GameProvider({ children }) {
       socket.off('connect',             onConnect);
       socket.off('update_game_state',   onUpdateGameState);
       socket.off('received_payment',    onReceivedPayment);
+      socket.off('new_transfer_request',onNewTransferRequest);
+      socket.off('notification',        onNotification);
+      socket.off('transfers_cancelled', onTransfersCancelled);
       socket.off('player_joined',       onPlayerJoined);
       socket.off('player_rejoined',     onPlayerRejoined);
       socket.off('player_disconnected', onPlayerDisconnected);
@@ -231,13 +261,13 @@ export function GameProvider({ children }) {
     }
   }, [ensureConnected]);
 
-  const joinRoom = useCallback(async (roomCode, playerName, avatar) => {
+  const joinRoom = useCallback(async (roomCode, playerName, avatar, color) => {
     dispatch({ type: 'SET_CONNECTING', payload: true });
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
       await ensureConnected();
       return new Promise((resolve, reject) => {
-        socket.emit('join_room', { roomCode, playerName, avatar }, (res) => {
+        socket.emit('join_room', { roomCode, playerName, avatar, color }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
@@ -264,6 +294,36 @@ export function GameProvider({ children }) {
       socket.emit(
         'perform_transfer',
         { roomCode: state.roomCode, fromId: socket.id, toId, amount },
+        (res) => (res.success ? resolve(res) : reject(new Error(res.error)))
+      );
+    }),
+  [state.roomCode]);
+
+  const requestTransfer = useCallback((toId, amount, reason) =>
+    new Promise((resolve, reject) => {
+      socket.emit(
+        'request_transfer',
+        { roomCode: state.roomCode, toId, amount, reason },
+        (res) => (res.success ? resolve(res) : reject(new Error(res.error)))
+      );
+    }),
+  [state.roomCode]);
+
+  const approveTransfer = useCallback((requestId) =>
+    new Promise((resolve, reject) => {
+      socket.emit(
+        'approve_transfer',
+        { roomCode: state.roomCode, requestId },
+        (res) => (res.success ? resolve(res) : reject(new Error(res.error)))
+      );
+    }),
+  [state.roomCode]);
+
+  const rejectTransfer = useCallback((requestId) =>
+    new Promise((resolve, reject) => {
+      socket.emit(
+        'reject_transfer',
+        { roomCode: state.roomCode, requestId },
         (res) => (res.success ? resolve(res) : reject(new Error(res.error)))
       );
     }),
@@ -315,6 +375,9 @@ export function GameProvider({ children }) {
     createRoom,
     joinRoom,
     performTransfer,
+    requestTransfer,
+    approveTransfer,
+    rejectTransfer,
     adjustBalance,
     resetBalances,
     closeRoom,

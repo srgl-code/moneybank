@@ -6,9 +6,10 @@ const fmt = n => `M$${Number(n).toLocaleString('pt-BR')}`;
 const QUICK = [50,100,200,500,1000];
 
 export default function TransferModal({onClose,players,currentPlayer}){
-  const {performTransfer,addToast}=useGame();
+  const {requestTransfer,addToast}=useGame();
   const [toId,setToId]=useState('');
   const [amount,setAmount]=useState('');
+  const [reason,setReason]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const ref=useRef(null);
@@ -30,7 +31,7 @@ export default function TransferModal({onClose,players,currentPlayer}){
     const bal=currentPlayer?.balance??0;
     if(!currentPlayer?.isBanker&&amt>bal) return setError(`Saldo insuficiente. Tens ${fmt(bal)}.`);
     setBusy(true);
-    try{ await performTransfer(toId,amt); addToast(`✅ ${fmt(amt)} enviado a ${sel?.name??'destinatário'}`,'success'); onClose(); }
+    try{ await requestTransfer(toId,amt,reason.trim()||undefined); addToast(`📤 Pedido enviado! Aguarda aprovação do bancário.`,'info',5000); onClose(); }
     catch(e){ setError(e.message); }
     finally{ setBusy(false); }
   };
@@ -94,9 +95,14 @@ export default function TransferModal({onClose,players,currentPlayer}){
               })}
             </div>
           </div>
+          <div>
+            <label className="field-label">Motivo (opcional)</label>
+            <input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="ex: compra de propriedade..." maxLength={60}
+              className="field" style={{fontSize:'0.875rem'}}/>
+          </div>
           <button type="submit" disabled={!canSubmit}
             style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.5rem',padding:'1rem',borderRadius:'1rem',fontSize:'1rem',fontWeight:900,cursor:canSubmit?'pointer':'not-allowed',border:'none',transition:'all 0.15s',opacity:canSubmit?1:0.4,background:canSubmit?'linear-gradient(135deg,#f59e0b,#d97706)':'rgba(255,255,255,0.08)',color:canSubmit?'#0a1a0a':'#4ade80',boxShadow:canSubmit?'0 6px 20px rgba(245,158,11,0.3)':'none'}}>
-            {busy?<><Loader2 style={{width:'1rem',height:'1rem',animation:'spin 0.7s linear infinite'}}/> A transferir…</>:toId&&parsed>0?`${fmt(parsed)} → ${sel?.name}`:'Confirmar Transferência'}
+            {busy?<><Loader2 style={{width:'1rem',height:'1rem',animation:'spin 0.7s linear infinite'}}/> A enviar pedido…</>:toId&&parsed>0?`📤 Pedir ${fmt(parsed)} → ${sel?.name}`:'Enviar Pedido'}
           </button>
         </form>
       </div>

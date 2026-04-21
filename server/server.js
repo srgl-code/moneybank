@@ -28,8 +28,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: Object.keys(ro
 
 // ─── In-memory Store ──────────────────────────────────────────────────────────
 /**
- * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string }} Player
- * @typedef {{ roomCode: string, bankerId: string, players: Player[], transactionHistory: object[], startingBalance: number, status: string, createdAt: Date }} Room
+ * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null }} Player
+ * @typedef {{ roomCode: string, bankerId: string, players: Player[], transactionHistory: object[], pendingTransfers: object[], startingBalance: number, status: string, createdAt: Date }} Room
  * @type {Record<string, Room>}
  */
 const rooms = {};
@@ -66,6 +66,7 @@ function getRoomState(room) {
       .sort((a, b) => b.balance - a.balance)
       .map(({ sessionId: _s, ...rest }) => rest), // strip internal sessionId from broadcast
     history: room.transactionHistory.slice(-50),
+    pendingTransfers: room.pendingTransfers ?? [],
     startingBalance: room.startingBalance,
     status: room.status,
   };
@@ -112,6 +113,7 @@ io.on('connection', (socket) => {
         bankerId: socket.id,
         players: [banker],
         transactionHistory: [],
+        pendingTransfers: [],
         startingBalance: balance,
         status: 'active',
         createdAt: new Date(),
@@ -131,7 +133,7 @@ io.on('connection', (socket) => {
   });
 
   // ── join_room ────────────────────────────────────────────────────────────────
-  socket.on('join_room', ({ roomCode, playerName, avatar, sessionId } = {}, callback) => {
+  socket.on('join_room', ({ roomCode, playerName, avatar, color, sessionId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const code = sanitizeString(roomCode, 6)?.toUpperCase();
@@ -186,6 +188,7 @@ io.on('connection', (socket) => {
         balance: room.startingBalance,
         isBanker: false,
         avatar: safeAvatar,
+        color: safeColor,
       };
 
       room.players.push(newPlayer);
@@ -245,6 +248,8 @@ io.on('connection', (socket) => {
       const entry = {
         id: uuidv4(),
         time: new Date().toISOString(),
+        fromId: sender.id,
+        toId: receiver.id,
         fromName: sender.name,
         toName: receiver.name,
         amount: amt,
@@ -292,6 +297,8 @@ io.on('connection', (socket) => {
       const entry = {
         id: uuidv4(),
         time: new Date().toISOString(),
+        fromId: amt > 0 ? room.bankerId : target.id,
+        toId:   amt > 0 ? target.id   : room.bankerId,
         fromName: 'Banco',
         toName: target.name,
         amount: absAmt,
@@ -374,13 +381,192 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── request_transfer (Player → Banker queue) ─────────────────────────────────
+  socket.on('request_transfer', ({ roomCode, toId, amount, reason } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+
+      const fromId = socket.id;
+      const amt = sanitizeAmount(amount);
+      if (!amt || amt <= 0) return callback({ success: false, error: 'Valor inválido' });
+      if (amt > 1_000_000_000) return callback({ success: false, error: 'Valor excede o limite' });
+
+      const sender   = room.players.find((p) => p.id === fromId);
+      const receiver = room.players.find((p) => p.id === toId);
+
+      if (!sender)   return callback({ success: false, error: 'Jogador não encontrado' });
+      if (!receiver) return callback({ success: false, error: 'Destinatário não encontrado' });
+      if (sender.id === receiver.id) return callback({ success: false, error: 'Não podes transferir para ti mesmo' });
+      if (!sender.isBanker && sender.balance < amt) {
+        return callback({ success: false, error: `Saldo insuficiente (tens M$${sender.balance.toLocaleString('pt-BR')})` });
+      }
+
+      const safeReason = sanitizeString(reason, 50);
+
+      const request = {
+        requestId: uuidv4(),
+        fromId,
+        fromName: sender.name,
+        fromAvatar: sender.avatar,
+        fromColor: sender.color || null,
+        toId,
+        toName: receiver.name,
+        toAvatar: receiver.avatar,
+        toColor: receiver.color || null,
+        amount: amt,
+        reason: safeReason,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      room.pendingTransfers.push(request);
+      io.to(room.bankerId).emit('new_transfer_request', request);
+
+      console.log(`[transfer:request] ${roomCode}  ${sender.name} → ${receiver.name}  M$${amt}`);
+      callback({ success: true, requestId: request.requestId });
+
+    } catch (err) {
+      console.error('[request_transfer]', err);
+      callback({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+
+  // ── approve_transfer (Banker only) ───────────────────────────────────────────
+  socket.on('approve_transfer', ({ roomCode, requestId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+
+      const idx = room.pendingTransfers.findIndex((r) => r.requestId === requestId);
+      if (idx === -1) return callback({ success: false, error: 'Pedido não encontrado ou já processado' });
+
+      const req = room.pendingTransfers[idx];
+      const sender   = room.players.find((p) => p.id === req.fromId);
+      const receiver = room.players.find((p) => p.id === req.toId);
+
+      if (!sender || !receiver) {
+        room.pendingTransfers.splice(idx, 1);
+        io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        return callback({ success: false, error: 'Jogador saiu da sala' });
+      }
+
+      if (!sender.isBanker && sender.balance < req.amount) {
+        room.pendingTransfers.splice(idx, 1);
+        io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        io.to(req.fromId).emit('notification', {
+          type: 'error', message: `❌ Transferência cancelada: saldo insuficiente`
+        });
+        return callback({ success: false, error: 'Saldo insuficiente — pedido cancelado' });
+      }
+
+      if (!sender.isBanker)   sender.balance   -= req.amount;
+      if (!receiver.isBanker) receiver.balance += req.amount;
+
+      room.pendingTransfers.splice(idx, 1);
+
+      const entry = {
+        id: uuidv4(),
+        time: new Date().toISOString(),
+        fromId: req.fromId,
+        toId:   req.toId,
+        fromName: req.fromName,
+        toName:   req.toName,
+        amount: req.amount,
+        type: 'transfer',
+        description: req.reason
+          ? `${req.fromName} → ${req.toName} — ${req.reason}`
+          : `${req.fromName} pagou M$${req.amount.toLocaleString('pt-BR')} a ${req.toName}`,
+      };
+      room.transactionHistory.push(entry);
+      trimHistory(room);
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+
+      // Directed notifications
+      if (sender.id !== room.bankerId) {
+        io.to(sender.id).emit('notification', {
+          type: 'debit',
+          message: `💳 Pagamento de M$${req.amount.toLocaleString('pt-BR')} aprovado → ${req.toName}`,
+        });
+      }
+      if (receiver.id !== room.bankerId) {
+        io.to(receiver.id).emit('notification', {
+          type: 'credit',
+          message: `💰 Recebeste M$${req.amount.toLocaleString('pt-BR')} de ${req.fromName}`,
+        });
+      }
+      socket.emit('notification', {
+        type: 'info',
+        message: `✅ Transferência aprovada: ${req.fromName} → ${req.toName}`,
+      });
+
+      console.log(`[transfer:approve] ${roomCode}  ${req.fromName} → ${req.toName}  M$${req.amount}`);
+      callback({ success: true });
+
+    } catch (err) {
+      console.error('[approve_transfer]', err);
+      callback({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+
+  // ── reject_transfer (Banker only) ────────────────────────────────────────────
+  socket.on('reject_transfer', ({ roomCode, requestId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+
+      const idx = room.pendingTransfers.findIndex((r) => r.requestId === requestId);
+      if (idx === -1) return callback({ success: false, error: 'Pedido não encontrado' });
+
+      const req = room.pendingTransfers[idx];
+      room.pendingTransfers.splice(idx, 1);
+
+      io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+
+      if (req.fromId !== room.bankerId) {
+        io.to(req.fromId).emit('notification', {
+          type: 'warning',
+          message: `❌ Transferência de M$${req.amount.toLocaleString('pt-BR')} recusada pelo bancário`,
+        });
+      }
+
+      console.log(`[transfer:reject] ${roomCode}  ${req.fromName} → ${req.toName}`);
+      callback({ success: true });
+
+    } catch (err) {
+      console.error('[reject_transfer]', err);
+      callback({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+
   // ── disconnect ────────────────────────────────────────────────────────────────
   socket.on('disconnect', (reason) => {
     const roomCode = socket.data.roomCode;
     if (roomCode && rooms[roomCode]) {
-      const player = rooms[roomCode].players.find((p) => p.id === socket.id);
+      const room = rooms[roomCode];
+      const player = room.players.find((p) => p.id === socket.id);
       if (player) {
         io.in(roomCode).emit('player_disconnected', { playerName: player.name });
+        // Cancel pending transfers involving this player
+        const cancelled = room.pendingTransfers.filter(
+          (r) => r.fromId === socket.id || r.toId === socket.id
+        );
+        if (cancelled.length > 0) {
+          room.pendingTransfers = room.pendingTransfers.filter(
+            (r) => r.fromId !== socket.id && r.toId !== socket.id
+          );
+          io.to(room.bankerId).emit('transfers_cancelled', {
+            requestIds: cancelled.map((r) => r.requestId),
+            playerName: player.name,
+          });
+          io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        }
       }
     }
     console.log(`[-] disconnect ${socket.id}  (${reason})`);

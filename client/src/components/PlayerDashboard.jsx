@@ -54,7 +54,7 @@ export default function PlayerDashboard(){
           <TB active={tab==='ranking'} onClick={()=>setTab('ranking')}><Trophy style={{width:'0.875rem',height:'0.875rem',marginRight:'0.375rem'}}/> Ranking</TB>
           <TB active={tab==='history'} onClick={()=>setTab('history')}><History style={{width:'0.875rem',height:'0.875rem',marginRight:'0.375rem'}}/> Extrato</TB>
         </div>
-        {tab==='ranking'?<RankingList players={all} myId={currentPlayer?.id}/>:<TransactionHistory history={gameState?.history??[]} myName={currentPlayer?.name}/>}
+        {tab==='ranking'?<RankingList players={all} myId={currentPlayer?.id}/>:<TransactionHistory history={gameState?.history??[]} myId={currentPlayer?.id} myName={currentPlayer?.name}/>}
       </main>
       {open&&<TransferModal onClose={()=>setOpen(false)} players={all} currentPlayer={currentPlayer}/>}
     </div>

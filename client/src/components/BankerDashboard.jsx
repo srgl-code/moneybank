@@ -1,14 +1,15 @@
 import React,{useState,useCallback} from 'react';
-import { Copy, Check, RefreshCw, X, History, Users, TrendingUp, LogOut, Loader2 } from 'lucide-react';
+import { Copy, Check, RefreshCw, X, History, Users, TrendingUp, LogOut, Loader2, CreditCard } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
 import TransactionHistory from './TransactionHistory.jsx';
 import CardMachine from './CardMachine.jsx';
+import ApprovalModal from './ApprovalModal.jsx';
 import { PinDisplay } from './PinIcon.jsx';
 const fmt = n => `M$${Number(n).toLocaleString('pt-BR')}`;
 const RC=['#f59e0b','#9ca3af','#f97316'];
 
 export default function BankerDashboard(){
-  const {roomCode,gameState,currentPlayer,adjustBalance,resetBalances,closeRoom,leaveRoom,addToast}=useGame();
+  const {roomCode,gameState,currentPlayer,adjustBalance,resetBalances,closeRoom,leaveRoom,addToast,approveTransfer,rejectTransfer}=useGame();
   const [tab,setTab]=useState('players');
   const [copied,setCopied]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -18,6 +19,9 @@ export default function BankerDashboard(){
   const [adjAmt,setAdjAmt]=useState('');
   const [adjRsn,setAdjRsn]=useState('');
   const [cardPlayer,setCardPlayer]=useState(null);
+  const [approvalReq,setApprovalReq]=useState(null);
+
+  const pending = gameState?.pendingTransfers ?? [];
 
   const players=(gameState?.players??[]).filter(p=>!p.isBanker);
   const total=players.reduce((s,p)=>s+p.balance,0);
@@ -94,6 +98,10 @@ export default function BankerDashboard(){
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1rem',gap:'0.75rem',flexWrap:'wrap'}}>
           <div style={{display:'flex',gap:'0.375rem'}}>
             <TB active={tab==='players'} onClick={()=>setTab('players')}><Users style={{width:'0.875rem',height:'0.875rem',marginRight:'0.375rem'}}/> Jogadores</TB>
+            <TB active={tab==='machine'} onClick={()=>setTab('machine')}>
+              <CreditCard style={{width:'0.875rem',height:'0.875rem',marginRight:'0.375rem'}}/> Maquininha
+              {pending.length>0&&<span style={{marginLeft:'0.375rem',padding:'0.0625rem 0.375rem',fontSize:'0.625rem',fontWeight:900,borderRadius:'9999px',background:'#ef4444',color:'white'}}>{pending.length}</span>}
+            </TB>
             <TB active={tab==='history'} onClick={()=>setTab('history')}>
               <History style={{width:'0.875rem',height:'0.875rem',marginRight:'0.375rem'}}/> Extrato
               {!!gameState?.history?.length&&<span style={{marginLeft:'0.375rem',padding:'0.0625rem 0.375rem',fontSize:'0.625rem',fontWeight:900,borderRadius:'9999px',background:'var(--gold)',color:'#0a1a0a'}}>{Math.min(gameState.history.length,50)}</span>}
@@ -131,6 +139,39 @@ export default function BankerDashboard(){
             </div>
           )
         )}
+        {tab==='machine'&&(
+          pending.length===0?(
+            <div style={{textAlign:'center',padding:'5rem 0'}}>
+              <div style={{fontSize:'3rem',marginBottom:'1rem'}}>💳</div>
+              <div style={{color:'white',fontWeight:700,fontSize:'1.1rem',marginBottom:'0.375rem'}}>Nenhum pedido pendente</div>
+              <div style={{color:'#16a34a',fontSize:'0.875rem'}}>Quando jogadores enviarem pedidos, aparecem aqui.</div>
+            </div>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+              {pending.map(req=>(
+                <button key={req.requestId} onClick={()=>setApprovalReq(req)}
+                  style={{width:'100%',textAlign:'left',background:'linear-gradient(135deg,rgba(13,31,16,0.95),rgba(9,20,11,0.95))',border:'1px solid rgba(245,158,11,0.3)',borderRadius:'1rem',padding:'1rem',cursor:'pointer',transition:'all 0.15s'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'0.75rem',flexWrap:'wrap'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+                      <span style={{display:'flex',alignItems:'center',gap:'0.375rem'}}>
+                        <div style={{width:'1.375rem',display:'flex',alignItems:'center',justifyContent:'center'}}><PinDisplay avatar={req.fromAvatar} size={18}/></div>
+                        <span style={{color:'white',fontWeight:600,fontSize:'0.875rem'}}>{req.fromName}</span>
+                      </span>
+                      <span style={{color:'#86efac',fontSize:'0.75rem',fontWeight:700}}>→</span>
+                      <span style={{display:'flex',alignItems:'center',gap:'0.375rem'}}>
+                        <div style={{width:'1.375rem',display:'flex',alignItems:'center',justifyContent:'center'}}><PinDisplay avatar={req.toAvatar} size={18}/></div>
+                        <span style={{color:'white',fontWeight:600,fontSize:'0.875rem'}}>{req.toName}</span>
+                      </span>
+                    </div>
+                    <span className="balance-text" style={{fontWeight:900,fontFamily:'monospace',fontSize:'1.1rem',color:'var(--gold)'}}>{fmt(req.amount)}</span>
+                  </div>
+                  {req.reason&&<div style={{marginTop:'0.375rem',fontSize:'0.75rem',color:'#86efac',fontStyle:'italic'}}>"{req.reason}"</div>}
+                  <div style={{marginTop:'0.5rem',fontSize:'0.6875rem',color:'#4ade80',fontWeight:700}}>Toca para aprovar ▶</div>
+                </button>
+              ))}
+            </div>
+          )
+        )}
         {tab==='history'&&<TransactionHistory history={gameState?.history??[]}/>}
       </main>
       {cardPlayer&&(
@@ -142,6 +183,20 @@ export default function BankerDashboard(){
             setCardPlayer(null);
           }}
           onCancel={()=>setCardPlayer(null)}
+        />
+      )}
+      {approvalReq&&(
+        <ApprovalModal
+          req={approvalReq}
+          onApprove={async(requestId)=>{
+            await approveTransfer(requestId);
+            setApprovalReq(null);
+          }}
+          onReject={async(requestId)=>{
+            await rejectTransfer(requestId);
+            setApprovalReq(null);
+          }}
+          onClose={()=>setApprovalReq(null)}
         />
       )}
     </div>
