@@ -9,9 +9,9 @@ function AppContent() {
   const { screen } = useGame();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-950 via-green-900 to-emerald-950">
+    <div className="min-h-screen bg-surface text-on-surface font-body antialiased">
       <Toast />
-      {screen === 'home'   && <Home />}
+      {screen === 'home' && <Home />}
       {screen === 'banker' && <BankerDashboard />}
       {screen === 'player' && <PlayerDashboard />}
     </div>
