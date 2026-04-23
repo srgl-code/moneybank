@@ -168,11 +168,13 @@ io.on('connection', (socket) => {
         }
       }
 
+
       // ── New player ────────────────────────────────────────────────────────────
       const safeName = sanitizeString(playerName, 20);
       if (!safeName) return callback({ success: false, error: 'Nome inválido' });
 
       const safeAvatar = sanitizeString(avatar, 4) || '👤';
+      const safeColor = sanitizeString(color, 10) || null;
 
       const humanPlayers = room.players.filter((p) => !p.isBanker);
       if (humanPlayers.length >= 8) {
@@ -581,14 +583,6 @@ function trimHistory(room) {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-// ─── Serve React app in production ───────────────────────────────────────────
-if (IS_PROD) {
-  const distPath = path.join(__dirname, '../client/dist');
-  app.use(express.static(distPath));
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-}
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || '3001', 10);
