@@ -28,7 +28,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: Object.keys(ro
 
 // ─── In-memory Store ──────────────────────────────────────────────────────────
 /**
- * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null }} Player
+ * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null, properties: string[], balanceHistory: number[] }} Player
  * @typedef {{ roomCode: string, bankerId: string, players: Player[], transactionHistory: object[], pendingTransfers: object[], startingBalance: number, status: string, createdAt: Date }} Room
  * @type {Record<string, Room>}
  */
@@ -55,6 +55,15 @@ function sanitizeString(raw, maxLen = 50) {
   return raw.trim().slice(0, maxLen);
 }
 
+function recordBalanceHistory(player) {
+  if (player.isBanker) return;
+  if (!player.balanceHistory) player.balanceHistory = [];
+  player.balanceHistory.push(player.balance);
+  if (player.balanceHistory.length > 50) {
+    player.balanceHistory.shift();
+  }
+}
+
 /**
  * Returns a serializable snapshot of the room state (no sessionIds leaked).
  * Players are already sorted by descending balance for the ranking.
@@ -68,6 +77,7 @@ function getRoomState(room) {
     history: room.transactionHistory.slice(-50),
     pendingTransfers: room.pendingTransfers ?? [],
     startingBalance: room.startingBalance,
+    startingPassGo: room.startingPassGo ?? 200,
     status: room.status,
   };
 }
@@ -77,7 +87,7 @@ io.on('connection', (socket) => {
   console.log(`[+] connect   ${socket.id}`);
 
   // ── create_room ─────────────────────────────────────────────────────────────
-  socket.on('create_room', ({ playerName, startingBalance } = {}, callback) => {
+  socket.on('create_room', ({ playerName, startingBalance, startingPassGo } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const safeName = sanitizeString(playerName, 20);
@@ -87,6 +97,8 @@ io.on('connection', (socket) => {
       if (!balance || balance < 1 || balance > 10_000_000) {
         return callback({ success: false, error: 'Saldo inicial deve ser entre 1 e 10.000.000' });
       }
+
+      const passGoAmt = sanitizeAmount(startingPassGo) || 200;
 
       let roomCode;
       let attempts = 0;
@@ -105,6 +117,8 @@ io.on('connection', (socket) => {
         balance: 0,       // Banco tem saldo infinito – não rastreado
         isBanker: true,
         avatar: '🏦',
+        properties: [],
+        balanceHistory: [],
       };
 
       /** @type {Room} */
@@ -115,6 +129,7 @@ io.on('connection', (socket) => {
         transactionHistory: [],
         pendingTransfers: [],
         startingBalance: balance,
+        startingPassGo: passGoAmt,
         status: 'active',
         createdAt: new Date(),
       };
@@ -124,7 +139,7 @@ io.on('connection', (socket) => {
       socket.data.sessionId = sessionId;
 
       console.log(`[room:create] ${roomCode}  host="${safeName}"`);
-      callback({ success: true, roomCode, sessionId, player: banker });
+      callback({ success: true, roomCode, sessionId, player: banker, gameState: getRoomState(rooms[roomCode]) });
 
     } catch (err) {
       console.error('[create_room]', err);
@@ -191,6 +206,8 @@ io.on('connection', (socket) => {
         isBanker: false,
         avatar: safeAvatar,
         color: safeColor,
+        properties: [],
+        balanceHistory: [room.startingBalance],
       };
 
       room.players.push(newPlayer);
@@ -244,8 +261,8 @@ io.on('connection', (socket) => {
       }
 
       // ── Atomic execution ───────────────────────────────────────────────────
-      if (!sender.isBanker)   sender.balance   -= amt;
-      if (!receiver.isBanker) receiver.balance += amt;
+      if (!sender.isBanker)   { sender.balance   -= amt; recordBalanceHistory(sender); }
+      if (!receiver.isBanker) { receiver.balance += amt; recordBalanceHistory(receiver); }
 
       const entry = {
         id: uuidv4(),
@@ -294,6 +311,7 @@ io.on('connection', (socket) => {
       const safeReason = sanitizeString(reason, 50);
 
       target.balance = Math.max(0, target.balance + amt);
+      recordBalanceHistory(target);
 
       const absAmt = Math.abs(amt);
       const entry = {
@@ -336,7 +354,12 @@ io.on('connection', (socket) => {
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
-      room.players.forEach((p) => { if (!p.isBanker) p.balance = room.startingBalance; });
+      room.players.forEach((p) => { 
+        if (!p.isBanker) {
+          p.balance = room.startingBalance;
+          recordBalanceHistory(p);
+        }
+      });
 
       room.transactionHistory.push({
         id: uuidv4(),
@@ -387,7 +410,8 @@ io.on('connection', (socket) => {
   socket.on('request_transfer', ({ roomCode, toId, amount, reason } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const room = rooms[roomCode];
+      const code = roomCode?.toUpperCase();
+      const room = rooms[code];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
 
       const fromId = socket.id;
@@ -424,7 +448,8 @@ io.on('connection', (socket) => {
       };
 
       room.pendingTransfers.push(request);
-      io.to(room.bankerId).emit('new_transfer_request', request);
+      io.in(code).emit('new_transfer_request', request);
+      io.in(code).emit('update_game_state', getRoomState(room));
 
       console.log(`[transfer:request] ${roomCode}  ${sender.name} → ${receiver.name}  M$${amt}`);
       callback({ success: true, requestId: request.requestId });
@@ -439,7 +464,8 @@ io.on('connection', (socket) => {
   socket.on('approve_transfer', ({ roomCode, requestId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const room = rooms[roomCode];
+      const code = roomCode?.toUpperCase();
+      const room = rooms[code];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
@@ -452,21 +478,21 @@ io.on('connection', (socket) => {
 
       if (!sender || !receiver) {
         room.pendingTransfers.splice(idx, 1);
-        io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        io.in(code).emit('update_game_state', getRoomState(room));
         return callback({ success: false, error: 'Jogador saiu da sala' });
       }
 
       if (!sender.isBanker && sender.balance < req.amount) {
         room.pendingTransfers.splice(idx, 1);
-        io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        io.in(code).emit('update_game_state', getRoomState(room));
         io.to(req.fromId).emit('notification', {
           type: 'error', message: `❌ Transferência cancelada: saldo insuficiente`
         });
         return callback({ success: false, error: 'Saldo insuficiente — pedido cancelado' });
       }
 
-      if (!sender.isBanker)   sender.balance   -= req.amount;
-      if (!receiver.isBanker) receiver.balance += req.amount;
+      if (!sender.isBanker)   { sender.balance   -= req.amount; recordBalanceHistory(sender); }
+      if (!receiver.isBanker) { receiver.balance += req.amount; recordBalanceHistory(receiver); }
 
       room.pendingTransfers.splice(idx, 1);
 
@@ -486,7 +512,7 @@ io.on('connection', (socket) => {
       room.transactionHistory.push(entry);
       trimHistory(room);
 
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(code).emit('update_game_state', getRoomState(room));
 
       // Directed notifications
       if (sender.id !== room.bankerId) {
@@ -519,7 +545,8 @@ io.on('connection', (socket) => {
   socket.on('reject_transfer', ({ roomCode, requestId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const room = rooms[roomCode];
+      const code = roomCode?.toUpperCase();
+      const room = rooms[code];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
@@ -529,7 +556,7 @@ io.on('connection', (socket) => {
       const req = room.pendingTransfers[idx];
       room.pendingTransfers.splice(idx, 1);
 
-      io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+      io.in(code).emit('update_game_state', getRoomState(room));
 
       if (req.fromId !== room.bankerId) {
         io.to(req.fromId).emit('notification', {
@@ -544,6 +571,163 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('[reject_transfer]', err);
       callback({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+
+  // ── pass_go ──────────────────────────────────────────────────────────────────
+  socket.on('pass_go', ({ roomCode, amount = 200 } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player || player.isBanker) return callback({ success: false, error: 'Ação inválida para este usuário' });
+
+      const amt = sanitizeAmount(amount) || 200;
+      player.balance += amt;
+      recordBalanceHistory(player);
+
+      room.transactionHistory.push({
+        id: uuidv4(),
+        time: new Date().toISOString(),
+        fromName: 'Banco',
+        toName: player.name,
+        amount: amt,
+        type: 'credit',
+        description: `${player.name} passou pelo Início e recebeu M$${amt.toLocaleString('pt-BR')}`
+      });
+      trimHistory(room);
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('game_notification', {
+        type: 'success',
+        message: `${player.name} passou pelo Início (+M$${amt})`,
+      });
+
+      callback({ success: true });
+    } catch (err) {
+      console.error('[pass_go]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── collect_fine ─────────────────────────────────────────────────────────────
+  socket.on('collect_fine', ({ roomCode, amount, reason } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player || player.isBanker) return callback({ success: false, error: 'Ação inválida' });
+
+      const amt = sanitizeAmount(amount);
+      if (!amt || amt <= 0) return callback({ success: false, error: 'Valor inválido' });
+
+      player.balance = Math.max(0, player.balance - amt);
+      recordBalanceHistory(player);
+      
+      const safeReason = sanitizeString(reason, 50) || 'Multa';
+
+      room.transactionHistory.push({
+        id: uuidv4(),
+        time: new Date().toISOString(),
+        fromName: player.name,
+        toName: 'Banco',
+        amount: amt,
+        type: 'debit',
+        description: `${player.name} pagou M$${amt.toLocaleString('pt-BR')} — ${safeReason}`
+      });
+      trimHistory(room);
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('game_notification', {
+        type: 'warning',
+        message: `${player.name} pagou uma multa de M$${amt}`,
+      });
+
+      callback({ success: true });
+    } catch (err) {
+      console.error('[collect_fine]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── start_auction (Banker only) ──────────────────────────────────────────────
+  socket.on('start_auction', ({ roomCode, propertyId, startingBid } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+
+      io.in(roomCode).emit('game_notification', {
+        type: 'info',
+        message: `Leilão iniciado! Preparem seus lances.`,
+      });
+      
+      io.in(roomCode).emit('auction_started', { propertyId, startingBid: sanitizeAmount(startingBid) });
+
+      callback({ success: true });
+    } catch (err) {
+      console.error('[start_auction]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── assign_property (Banker only) ────────────────────────────────────────────
+  socket.on('assign_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+
+      const target = room.players.find(p => p.id === targetId);
+      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
+
+      if (!target.properties) target.properties = [];
+      if (!target.properties.includes(propertyId)) {
+        target.properties.push(propertyId);
+      }
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('update_properties', { playerId: targetId, properties: target.properties });
+      io.in(roomCode).emit('game_notification', {
+        type: 'success',
+        message: `${target.name} adquiriu uma nova propriedade!`,
+      });
+
+      callback({ success: true });
+    } catch (err) {
+      console.error('[assign_property]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── remove_property (Banker only) ────────────────────────────────────────────
+  socket.on('remove_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+
+      const target = room.players.find(p => p.id === targetId);
+      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
+
+      if (target.properties) {
+        target.properties = target.properties.filter(id => id !== propertyId);
+      }
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('update_properties', { playerId: targetId, properties: target.properties });
+
+      callback({ success: true });
+    } catch (err) {
+      console.error('[remove_property]', err);
+      callback({ success: false, error: 'Erro interno' });
     }
   });
 

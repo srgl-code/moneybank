@@ -1,26 +1,68 @@
 import React from 'react';
-import { CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useGame } from '../context/GameContext.jsx';
-const C={
-  success:{Icon:CheckCircle2,border:'rgba(74,222,128,0.35)', bg:'rgba(13,31,16,0.97)', accent:'#4ade80', sh:'0 8px 32px rgba(74,222,128,0.12)'},
-  error:  {Icon:XCircle,      border:'rgba(248,113,113,0.4)',bg:'rgba(24,8,8,0.97)',    accent:'#f87171', sh:'0 8px 32px rgba(248,113,113,0.12)'},
-  warning:{Icon:AlertTriangle,border:'rgba(251,191,36,0.4)', bg:'rgba(24,18,4,0.97)',   accent:'#fbbf24', sh:'0 8px 32px rgba(251,191,36,0.12)'},
-  info:   {Icon:Info,          border:'rgba(96,165,250,0.35)',bg:'rgba(6,12,24,0.97)',   accent:'#60a5fa', sh:'0 8px 32px rgba(96,165,250,0.1)'},
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
+
+const CONFIG = {
+  success: { Icon: CheckCircle2, color: 'text-emerald-600', border: 'border-emerald-100', bg: 'bg-emerald-50/90' },
+  error:   { Icon: AlertCircle,   color: 'text-rose-600',    border: 'border-rose-100',    bg: 'bg-rose-50/90'    },
+  warning: { Icon: AlertTriangle, color: 'text-amber-600',   border: 'border-amber-100',   bg: 'bg-amber-50/90'   },
+  info:    { Icon: Info,          color: 'text-blue-600',    border: 'border-blue-100',    bg: 'bg-blue-50/90'    },
 };
-export default function Toast(){
-  const {toasts}=useGame();
-  if(!toasts.length) return null;
+
+export default function Toast() {
+  const { toasts, removeToast } = useGame();
+
+  if (!toasts.length) return null;
+
   return (
-    <div aria-live="polite" style={{position:'fixed',top:'1rem',right:'1rem',zIndex:100,display:'flex',flexDirection:'column',gap:'0.5rem',maxWidth:'22rem',width:'100%',pointerEvents:'none'}}>
-      {toasts.map(t=>{
-        const c=C[t.type]??C.info,{Icon}=c;
-        return (
-          <div key={t.id} style={{display:'flex',alignItems:'flex-start',gap:'0.75rem',padding:'0.875rem 1rem',borderRadius:'1rem',fontSize:'0.875rem',fontWeight:500,pointerEvents:'auto',animation:'slideInRight 0.32s cubic-bezier(.22,1,.36,1) both',background:c.bg,border:`1px solid ${c.border}`,boxShadow:`${c.sh},inset 0 1px 0 rgba(255,255,255,0.04)`,backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
-            <Icon style={{width:'1rem',height:'1rem',flexShrink:0,marginTop:'0.0625rem',color:c.accent}}/>
-            <span style={{lineHeight:1.4,color:'white'}}>{t.message}</span>
-          </div>
-        );
-      })}
+    <div
+      aria-live="polite"
+      className="fixed top-6 right-6 z-[100] flex flex-col gap-3 max-w-[320px] w-full pointer-events-none"
+    >
+      <AnimatePresence>
+        {toasts.map((t) => {
+          const c = CONFIG[t.type] ?? CONFIG.info;
+          const { Icon } = c;
+          return (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, y: -20, scale: 0.9, x: 20 }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.9, x: 20 }}
+              className={`
+                group pointer-events-auto relative flex items-start gap-3 p-4 rounded-2xl
+                backdrop-blur-md shadow-lg border ${c.border} ${c.bg}
+              `}
+            >
+              <div className={`shrink-0 mt-0.5 ${c.color}`}>
+                <Icon size={18} strokeWidth={2.5} />
+              </div>
+              
+              <div className="flex-1 pr-4">
+                <p className="text-sm font-bold text-on-surface leading-snug">
+                  {t.message}
+                </p>
+              </div>
+
+              <button
+                onClick={() => removeToast?.(t.id)}
+                className="absolute top-3 right-3 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-black/5 transition-all text-on-surface-variant"
+              >
+                <X size={14} />
+              </button>
+
+              <motion.div
+                initial={{ width: '100%' }}
+                animate={{ width: '0%' }}
+                transition={{ duration: 4.8, ease: 'linear' }}
+                className={`absolute bottom-0 left-0 h-0.5 rounded-full opacity-30 ${c.color.replace('text', 'bg')}`}
+              />
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
     </div>
   );
 }

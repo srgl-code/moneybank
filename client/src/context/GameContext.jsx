@@ -31,12 +31,14 @@ function reducer(state, action) {
 
     case 'UPDATE_GAME_STATE': {
       const gameState = action.payload;
+      if (!gameState) return state;
+      
       // Keep currentPlayer fresh from the canonical server state
-      const updated = gameState.players.find((p) => p.id === state.mySocketId);
+      const updated = gameState.players?.find((p) => p.id === state.mySocketId);
       return {
         ...state,
         gameState,
-        pendingTransfers: gameState.pendingTransfers ?? state.pendingTransfers,
+        pendingTransfers: gameState.pendingTransfers ?? state.pendingTransfers ?? [],
         currentPlayer: updated ?? state.currentPlayer,
       };
     }
@@ -234,19 +236,36 @@ export function GameProvider({ children }) {
     }),
   []);
 
-  const createRoom = useCallback(async (playerName, startingBalance) => {
+  const saveRecentRoom = (roomCode, sessionId, meta = {}) => {
+    try {
+      const recent = JSON.parse(localStorage.getItem('moneybank_recent_rooms') || '[]');
+      const newRecent = [
+        { roomCode, sessionId, time: Date.now(), ...meta },
+        ...recent.filter(r => r.roomCode !== roomCode)
+      ].slice(0, 5);
+      localStorage.setItem('moneybank_recent_rooms', JSON.stringify(newRecent));
+    } catch(e){}
+  };
+
+  const createRoom = useCallback(async (playerName, startingBalance, startingPassGo) => {
     dispatch({ type: 'SET_CONNECTING', payload: true });
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
       await ensureConnected();
       return new Promise((resolve, reject) => {
-        socket.emit('create_room', { playerName, startingBalance }, (res) => {
+        socket.emit('create_room', { playerName, startingBalance, startingPassGo }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
+            saveRecentRoom(res.roomCode, res.sessionId, {
+              bankerName: playerName,
+              playerCount: 1,
+              myEmoji: '🏦',
+            });
             dispatch({ type: 'SET_MY_ID',         payload: socket.id });
             dispatch({ type: 'SET_ROOM',           payload: res.roomCode });
             dispatch({ type: 'SET_CURRENT_PLAYER', payload: res.player });
+            dispatch({ type: 'UPDATE_GAME_STATE', payload: res.gameState });
             dispatch({ type: 'SET_SCREEN',         payload: 'banker' });
             resolve(res);
           } else {
@@ -261,16 +280,22 @@ export function GameProvider({ children }) {
     }
   }, [ensureConnected]);
 
-  const joinRoom = useCallback(async (roomCode, playerName, avatar, color) => {
+  const joinRoom = useCallback(async (roomCode, playerName, avatar, color, sessionId) => {
     dispatch({ type: 'SET_CONNECTING', payload: true });
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
       await ensureConnected();
       return new Promise((resolve, reject) => {
-        socket.emit('join_room', { roomCode, playerName, avatar, color }, (res) => {
+        socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
+            const banker = res.gameState?.players?.find(p => p.isBanker);
+            saveRecentRoom(res.roomCode, res.sessionId, {
+              bankerName: banker?.name || '?',
+              playerCount: res.gameState?.players?.length ?? 1,
+              myEmoji: avatar || '🎲',
+            });
             dispatch({ type: 'SET_MY_ID',         payload: socket.id });
             dispatch({ type: 'SET_ROOM',           payload: res.roomCode });
             dispatch({ type: 'SET_CURRENT_PLAYER', payload: res.player });
@@ -368,6 +393,46 @@ export function GameProvider({ children }) {
     dispatch({ type: 'RESET' });
   }, []);
 
+  const passGo = useCallback((amount = 200) =>
+    new Promise((resolve, reject) => {
+      socket.emit('pass_go', { roomCode: state.roomCode, amount }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const collectFine = useCallback((amount, reason) =>
+    new Promise((resolve, reject) => {
+      socket.emit('collect_fine', { roomCode: state.roomCode, amount, reason }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const startAuction = useCallback((propertyId, startingBid) =>
+    new Promise((resolve, reject) => {
+      socket.emit('start_auction', { roomCode: state.roomCode, propertyId, startingBid }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const assignProperty = useCallback((targetId, propertyId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('assign_property', { roomCode: state.roomCode, targetId, propertyId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const removeProperty = useCallback((targetId, propertyId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('remove_property', { roomCode: state.roomCode, targetId, propertyId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
   // ── Context Value ─────────────────────────────────────────────────────────────
   const value = {
     ...state,
@@ -382,6 +447,11 @@ export function GameProvider({ children }) {
     resetBalances,
     closeRoom,
     leaveRoom,
+    passGo,
+    collectFine,
+    startAuction,
+    assignProperty,
+    removeProperty,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { GameProvider, useGame } from './context/GameContext.jsx';
 import Home from './components/Home.jsx';
 import BankerDashboard from './components/BankerDashboard.jsx';
@@ -9,11 +10,13 @@ function AppContent() {
   const { screen } = useGame();
 
   return (
-    <div className="min-h-screen bg-surface text-on-surface font-body antialiased">
+    <div className="min-h-screen bg-surface">
       <Toast />
-      {screen === 'home' && <Home />}
-      {screen === 'banker' && <BankerDashboard />}
-      {screen === 'player' && <PlayerDashboard />}
+      <AnimatePresence mode="wait">
+        {screen === 'home' && <Home key="home" />}
+        {screen === 'banker' && <BankerDashboard key="banker" />}
+        {screen === 'player' && <PlayerDashboard key="player" />}
+      </AnimatePresence>
     </div>
   );
 }

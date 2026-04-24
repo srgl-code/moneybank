@@ -1,11 +1,35 @@
 import React, { useState } from 'react';
-import { LogIn, Plus, AlertCircle, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, LogIn, PlusCircle, History, AlertCircle, Settings2, Wallet, Flag, User } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
-import { PIN_OPTIONS, PinSVG, CUSTOM_PIN_ID } from './PinIcon.jsx';
-const PRESETS = [
-  { label: 'M$1.500', value: 1500, note: 'Padrão' },
-  { label: 'M$2.000', value: 2000, note: 'Luxo' },
-  { label: 'M$3.000', value: 3000, note: 'Longa' },
+import { PIN_OPTIONS, PinSVG, CUSTOM_PIN_ID, PinDisplay } from './PinIcon.jsx';
+import SegmentedControl from './ui/SegmentedControl.jsx';
+import PageTransition from './ui/PageTransition.jsx';
+import { GameModeSelector } from './features/GameModeSelector.jsx';
+import { RecentRooms } from './features/RecentRooms.jsx';
+
+const PRESETS = {
+  classic: 1500,
+  fast: 3000,
+  custom: ''
+};
+
+const tabOptions = [
+  {
+    value: 'join',
+    label: 'Entrar',
+    icon: <LogIn className="w-4 h-4" />,
+  },
+  {
+    value: 'create',
+    label: 'Criar Sala',
+    icon: <PlusCircle className="w-4 h-4" />,
+  },
+  {
+    value: 'recent',
+    label: 'Recentes',
+    icon: <History className="w-4 h-4" />,
+  },
 ];
 
 export default function Home() {
@@ -15,179 +39,386 @@ export default function Home() {
   const [bankerName, setBankerName] = useState('');
   const [startBal, setStartBal] = useState('1500');
   const [customBal, setCustomBal] = useState('');
-  const [useCustom, setUseCustom] = useState(false);
+  const [passGoAmt, setPassGoAmt] = useState('200');
+  const [gameMode, setGameMode] = useState('classic');
   const [roomCode, setRoomCode] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [avatar, setAvatar] = useState(PIN_OPTIONS[0].id);
   const [playerColor, setPlayerColor] = useState(PIN_OPTIONS[0].color);
-  const [customEmoji, setCustomEmoji] = useState('');
   const [customColor, setCustomColor] = useState('#ef4444');
 
   const selectPin = (pin) => { setAvatar(pin.id); setPlayerColor(pin.color); };
   const isCustom = avatar === CUSTOM_PIN_ID;
 
-  const handleCreate = async e => {
-    e.preventDefault(); setErr('');
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setErr('');
     const name = bankerName.trim();
     if (!name) return setErr('Insere o teu nome de bancário.');
-    const bal = parseInt(useCustom ? customBal : startBal, 10);
+    const bal = gameMode === 'custom' ? parseInt(customBal, 10) : PRESETS[gameMode];
     if (!bal || bal < 100 || bal > 10_000_000) return setErr('Saldo entre 100 e 10.000.000.');
-    try { await createRoom(name, bal); } catch(e) { setErr(e.message); }
+    const go = parseInt(passGoAmt, 10) || 200;
+    try { await createRoom(name, bal, go); } catch (e) { setErr(e.message); }
   };
 
-  const handleJoin = async e => {
-    e.preventDefault(); setErr('');
+  const handleJoin = async (e) => {
+    e.preventDefault();
+    setErr('');
     const code = roomCode.trim().toUpperCase();
     if (code.length !== 6) return setErr('O código tem 6 caracteres.');
     const name = playerName.trim();
     if (!name) return setErr('Insere o teu nome.');
-    const effectiveAvatar = isCustom ? (customEmoji.trim().slice(0,2) || '\u{1F3AE}') : avatar;
-    const effectiveColor  = isCustom ? customColor : playerColor;
-    try { await joinRoom(code, name, effectiveAvatar, effectiveColor); } catch(e) { setErr(e.message); }
+    const effectiveAvatar = isCustom ? CUSTOM_PIN_ID : avatar;
+    const effectiveColor = isCustom ? customColor : playerColor;
+    try { await joinRoom(code, name, effectiveAvatar, effectiveColor); } catch (e) { setErr(e.message); }
   };
 
-  const sw = m => { setMode(m); setErr(''); };
+  const handleRejoin = async (code, sessionId) => {
+    setErr('');
+    try { await joinRoom(code, '', '', '', sessionId); } catch (e) { setErr(e.message); }
+  };
+
+  const sw = (m) => { setMode(m); setErr(''); };
   const error = err || connectionError;
 
-  const page = { minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem', position:'relative', overflow:'hidden' };
-  const card = { borderRadius:'1.5rem', padding:'1.5rem', background:'linear-gradient(145deg,rgba(13,31,16,0.98) 0%,rgba(9,20,11,0.98) 100%)', border:'1px solid var(--green-border)', boxShadow:'0 24px 64px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05)' };
-
   return (
-    <div style={page}>
-      {/* bg blobs */}
-      <div style={{position:'absolute',inset:0,pointerEvents:'none',overflow:'hidden'}}>
-        <div style={{position:'absolute',top:'-10rem',left:'-10rem',width:'24rem',height:'24rem',borderRadius:'50%',background:'rgba(22,101,52,0.12)',filter:'blur(80px)'}}/>
-        <div style={{position:'absolute',bottom:'-10rem',right:'-10rem',width:'24rem',height:'24rem',borderRadius:'50%',background:'rgba(120,53,15,0.1)',filter:'blur(80px)'}}/>
-      </div>
+    <PageTransition>
+      <main id="main-content" className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-surface">
+        {/* Dot pattern background */}
+        <div className="absolute inset-0 dot-pattern pointer-events-none" />
+        {/* Soft gradient accents */}
+        <div className="absolute -top-60 -left-40 w-[30rem] h-[30rem] rounded-full pointer-events-none opacity-30"
+          style={{ background: 'radial-gradient(circle, rgba(0,106,70,0.08), transparent 70%)', filter: 'blur(60px)' }} />
+        <div className="absolute -bottom-60 -right-32 w-[25rem] h-[25rem] rounded-full pointer-events-none opacity-20"
+          style={{ background: 'radial-gradient(circle, rgba(117,87,0,0.06), transparent 70%)', filter: 'blur(60px)' }} />
 
-      <div style={{position:'relative',width:'100%',maxWidth:'22rem',animation:'fadeUp 0.4s cubic-bezier(.22,1,.36,1) both'}}>
+        <div className="relative w-full max-w-md z-10">
+          {/* Logo */}
+          <div className="text-center mb-10 select-none">
+            <motion.div
+              className="inline-flex items-center justify-center w-20 h-20 rounded-3xl text-4xl mb-4"
+              style={{
+                background: 'linear-gradient(145deg, rgba(0,133,90,0.08), rgba(117,87,0,0.06))',
+                border: '1.5px solid rgba(0,133,90,0.12)',
+                boxShadow: '0 20px 50px rgba(0,133,90,0.06)',
+              }}
+              animate={{ y: [0, -6, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              🏦
+            </motion.div>
+            <h1 className="font-headline text-4xl font-black tracking-tighter text-primary leading-none">
+              Prestige<span className="text-tertiary">Ledger</span>
+            </h1>
+            <p className="text-xs text-on-surface-variant mt-2 font-bold uppercase tracking-[0.15em]">
+              Banco Imobiliário Digital
+            </p>
+          </div>
 
-        {/* Logo */}
-        <div style={{textAlign:'center',marginBottom:'2rem',userSelect:'none'}}>
-          <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'5rem',height:'5rem',borderRadius:'1.5rem',fontSize:'2.8rem',background:'linear-gradient(135deg,rgba(245,158,11,0.15),rgba(217,119,6,0.08))',border:'1px solid rgba(245,158,11,0.2)',marginBottom:'1rem',boxShadow:'0 16px 40px rgba(245,158,11,0.1)'}}>🏦</div>
-          <h1 style={{fontSize:'2.25rem',fontWeight:900,letterSpacing:'-0.03em',color:'white',lineHeight:1,margin:0}}>
-            Money<span style={{color:'var(--gold)'}}>Bank</span>
-          </h1>
-          <p style={{fontSize:'0.7rem',color:'#4ade80',marginTop:'0.5rem',fontWeight:700,letterSpacing:'0.15em',textTransform:'uppercase'}}>
-            Banco Imobiliário Digital
-          </p>
-        </div>
+          {/* Segmented Tabs */}
+          <div className="mb-6">
+            <SegmentedControl options={tabOptions} value={mode} onChange={sw} />
+          </div>
 
-        {/* Tabs */}
-        <div style={{display:'flex',padding:'0.25rem',marginBottom:'1.25rem',borderRadius:'1rem',background:'rgba(255,255,255,0.04)',border:'1px solid var(--green-border)'}}>
-          <TBtn active={mode==='join'} onClick={()=>sw('join')}>
-            <LogIn style={{width:'1rem',height:'1rem',marginRight:'0.375rem',flexShrink:0}}/> Entrar
-          </TBtn>
-          <TBtn active={mode==='create'} onClick={()=>sw('create')}>
-            <Plus style={{width:'1rem',height:'1rem',marginRight:'0.375rem',flexShrink:0}}/> Criar Sala
-          </TBtn>
-        </div>
+          {/* Card */}
+          <motion.div
+            className="card-elevated p-7"
+            layout
+            transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+          >
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                  className="flex items-center gap-3 mb-6 p-4 rounded-2xl bg-error/10 border border-error/20 text-error backdrop-blur-md shadow-lg shadow-error/5"
+                >
+                  <div className="w-8 h-8 rounded-full bg-error/20 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                  <p className="text-sm font-bold leading-tight flex-1">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-        {/* Card */}
-        <div style={card}>
-          {error && (
-            <div style={{display:'flex',alignItems:'flex-start',gap:'0.625rem',marginBottom:'1.25rem',padding:'0.875rem',borderRadius:'0.75rem',background:'rgba(220,38,38,0.12)',border:'1px solid rgba(220,38,38,0.3)',color:'#fca5a5',fontSize:'0.875rem'}}>
-              <AlertCircle style={{width:'1rem',height:'1rem',flexShrink:0,marginTop:'0.125rem'}}/>
-              <span>{error}</span>
-            </div>
-          )}
+            <AnimatePresence mode="wait">
+              {mode === 'create' ? (
+                <motion.form
+                  key="create"
+                  onSubmit={handleCreate}
+                  className="flex flex-col gap-6"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <section>
+                    <label className="flex items-center gap-2 mb-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
+                      <User className="w-3 h-3" />
+                      Identificação
+                    </label>
+                    <input
+                      type="text" value={bankerName}
+                      onChange={(e) => setBankerName(e.target.value)}
+                      placeholder="Teu nome (Bancário)" maxLength={20}
+                      className="field glow-input h-14 text-base" autoComplete="off" autoFocus
+                    />
+                  </section>
 
-          {mode==='create' ? (
-            <form onSubmit={handleCreate} style={{display:'flex',flexDirection:'column',gap:'1.25rem'}}>
-              <div>
-                <label className="field-label">Teu nome (Bancário)</label>
-                <input type="text" value={bankerName} onChange={e=>setBankerName(e.target.value)} placeholder="Ex: Pedro" maxLength={20} className="field" autoComplete="off" autoFocus/>
-              </div>
-              <div>
-                <label className="field-label">Saldo inicial por jogador</label>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'0.75rem'}}>
-                  {PRESETS.map(p=>{
-                    const on = !useCustom && startBal===String(p.value);
-                    return (
-                      <button key={p.value} type="button" onClick={()=>{setStartBal(String(p.value));setUseCustom(false);}}
-                        style={{padding:'0.75rem 0',borderRadius:'0.75rem',fontSize:'0.8rem',fontWeight:900,cursor:'pointer',transition:'all 0.15s',border:'none',...(on?{background:'linear-gradient(135deg,#f59e0b,#d97706)',color:'#0a1a0a',boxShadow:'0 4px 16px rgba(245,158,11,0.3)'}:{background:'rgba(255,255,255,0.04)',border:'1px solid var(--green-border)',color:'#86efac'})}}>
-                        <div>{p.label}</div>
-                        <div style={{fontSize:'0.65rem',opacity:0.7,fontWeight:400,marginTop:'0.125rem'}}>{p.note}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
-                  <button type="button" onClick={()=>setUseCustom(!useCustom)}
-                    style={{display:'flex',alignItems:'center',gap:'0.375rem',fontSize:'0.75rem',fontWeight:600,cursor:'pointer',background:'none',border:'none',color:useCustom?'var(--gold)':'#4ade80',padding:0}}>
-                    <span style={{width:'1rem',height:'1rem',borderRadius:'0.25rem',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'0.625rem',fontWeight:900,border:`1.5px solid ${useCustom?'#f59e0b':'#2d5231'}`,background:useCustom?'#f59e0b':'transparent',color:useCustom?'#0a1a0a':'transparent',transition:'all 0.15s'}}>✓</span>
-                    Outro valor
+                  <section className="p-4 rounded-2xl bg-surface-container/30 border border-outline-variant/10">
+                    <label className="flex items-center gap-2 mb-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
+                      <Settings2 className="w-3 h-3" />
+                      Regras da Partida
+                    </label>
+
+                    <div className="space-y-6">
+                      <div>
+                         <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-tight mb-2 ml-1">Modo de Jogo</p>
+                         <GameModeSelector selected={gameMode} onSelect={setGameMode} />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4">
+                        {gameMode === 'custom' && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                            <label className="field-label flex items-center gap-2">
+                              <Wallet className="w-3 h-3" /> Saldo Inicial
+                            </label>
+                            <input
+                              type="number" value={customBal}
+                              onChange={(e) => setCustomBal(e.target.value)}
+                              placeholder="Ex: 1500" min="100" max="10000000"
+                              className="field glow-input h-12 text-sm"
+                            />
+                          </motion.div>
+                        )}
+
+                        <div>
+                          <label className="field-label flex items-center gap-2">
+                            <Flag className="w-3 h-3" /> Valor da Largada
+                          </label>
+                          <input
+                            type="number" value={passGoAmt}
+                            onChange={(e) => setPassGoAmt(e.target.value)}
+                            placeholder="Ex: 200" min="0" max="1000000"
+                            className="field glow-input h-12 text-sm"
+                          />
+                          <p className="text-[9px] text-on-surface-variant/60 mt-1.5 pl-1 italic">Prémio ao passar pelo ponto de partida.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <button type="submit" disabled={isConnecting} className="btn-primary h-14 text-base shadow-lg shadow-primary/20">
+                    {isConnecting ? (
+                      <><Loader2 className="animate-spin w-5 h-5" /> A criar…</>
+                    ) : (
+                      <>🏦 Criar Sala de Jogo</>
+                    )}
                   </button>
-                  {useCustom && <input type="number" value={customBal} onChange={e=>setCustomBal(e.target.value)} placeholder="Ex: 2500" min="100" max="10000000" autoFocus className="field" style={{flex:1,fontSize:'0.875rem'}}/>}
-                </div>
-              </div>
-              <button type="submit" disabled={isConnecting} className="btn-gold">
-                {isConnecting?<><Loader2 className="animate-spin" style={{width:'1rem',height:'1rem'}}/> A criar…</>:'🏦 Criar Sala'}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleJoin} style={{display:'flex',flexDirection:'column',gap:'1.25rem'}}>
-              <div>
-                <label className="field-label">Código da Sala</label>
-                <input type="text" value={roomCode}
-                  onChange={e=>setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6))}
-                  placeholder="ABC123" maxLength={6} autoComplete="off" inputMode="text"
-                  className="field balance-text"
-                  style={{textAlign:'center',fontWeight:900,fontSize:'2rem',letterSpacing:'0.4em'}}/>
-              </div>
-              <div>
-                <label className="field-label">Teu nome</label>
-                <input type="text" value={playerName} onChange={e=>setPlayerName(e.target.value)} placeholder="Ex: Maria" maxLength={20} className="field" autoComplete="off"/>
-              </div>
-              <div>
-                <label className="field-label">Escolhe o teu pino</label>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.5rem'}}>
-                  {PIN_OPTIONS.map(p=>{
-                    const on=avatar===p.id;
-                    return (
-                      <button key={p.id} type="button" onClick={()=>selectPin(p)} title={p.label}
-                        style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem 0',borderRadius:'0.75rem',cursor:'pointer',transition:'all 0.15s',border:'none',...(on?{background:p.color+'22',border:`2px solid ${p.color}`,transform:'scale(1.08)'}:{background:'rgba(255,255,255,0.03)',border:'2px solid transparent'})}}>
-                        <PinSVG color={p.color} size={28}/>
-                      </button>
-                    );
-                  })}
-                  <button type="button" onClick={()=>setAvatar(CUSTOM_PIN_ID)} title="Personalizado"
-                    style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem 0',borderRadius:'0.75rem',cursor:'pointer',transition:'all 0.15s',border:'none',fontSize:'1.5rem',...(isCustom?{background:'rgba(245,158,11,0.15)',border:'2px solid var(--gold)',transform:'scale(1.08)'}:{background:'rgba(255,255,255,0.03)',border:'2px solid transparent'})}}>
-                    ✏️
-                  </button>
-                </div>
-                {isCustom&&(
-                  <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem',alignItems:'center'}}>
-                    <input type="text" value={customEmoji} onChange={e=>setCustomEmoji(e.target.value.slice(0,2))} placeholder="Emoji..." maxLength={2} autoFocus
-                      className="field" style={{flex:1,textAlign:'center',fontSize:'2rem',letterSpacing:'0.25em',padding:'0.5rem'}}/>
-                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.25rem'}}>
-                      <label style={{fontSize:'0.5625rem',fontWeight:700,color:'#4ade80',textTransform:'uppercase',letterSpacing:'0.08em'}}>Cor</label>
-                      <input type="color" value={customColor} onChange={e=>setCustomColor(e.target.value)}
-                        style={{width:'3rem',height:'3rem',border:'2px solid rgba(255,255,255,0.15)',borderRadius:'0.5rem',cursor:'pointer',background:'none',padding:'2px'}}/>
+                </motion.form>
+              ) : mode === 'join' ? (
+                <motion.form
+                  key="join"
+                  onSubmit={handleJoin}
+                  className="flex flex-col gap-5"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <div>
+                    <label className="field-label">Código da Sala</label>
+                    <div className="flex gap-2 justify-between">
+                      {[0, 1, 2, 3, 4, 5].map((index) => (
+                        <input
+                          key={index}
+                          id={`code-input-${index}`}
+                          type="text"
+                          maxLength={1}
+                          value={roomCode[index] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            let newCode = roomCode.split('');
+                            newCode[index] = val.slice(-1);
+                            setRoomCode(newCode.join(''));
+                            if (val && index < 5) {
+                              document.getElementById(`code-input-${index + 1}`)?.focus();
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Backspace') {
+                              if (!roomCode[index] && index > 0) {
+                                document.getElementById(`code-input-${index - 1}`)?.focus();
+                                let newCode = roomCode.split('');
+                                newCode[index - 1] = '';
+                                setRoomCode(newCode.join(''));
+                              } else {
+                                let newCode = roomCode.split('');
+                                newCode[index] = '';
+                                setRoomCode(newCode.join(''));
+                              }
+                            }
+                          }}
+                          className="w-12 h-14 bg-surface text-center font-headline font-black text-2xl border border-outline-variant rounded-lg shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all uppercase"
+                          autoComplete="off"
+                        />
+                      ))}
                     </div>
                   </div>
-                )}
-              </div>
-              <button type="submit" disabled={isConnecting} className="btn-green">
-                {isConnecting?<><Loader2 className="animate-spin" style={{width:'1rem',height:'1rem'}}/> A entrar…</>:'🎲 Entrar na Sala'}
-              </button>
-            </form>
-          )}
+
+                  <div>
+                    <label className="field-label">Teu nome</label>
+                    <input
+                      type="text" value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value)}
+                      placeholder="Ex: Maria" maxLength={20}
+                      className="field glow-input" autoComplete="off"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">Escolhe o teu pino</label>
+                    <div className="grid grid-cols-4 gap-3">
+                      {PIN_OPTIONS.map((p) => {
+                        const on = avatar === p.id;
+                        return (
+                          <motion.button
+                            key={p.id} type="button"
+                            onClick={() => selectPin(p)} title={p.label}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className={`
+                              flex items-center justify-center py-2 rounded-2xl cursor-pointer transition-all relative bg-surface-container/30
+                              ${on
+                                ? 'border border-primary bg-primary/5 shadow-md shadow-primary/10'
+                                : 'border border-outline-variant/30 hover:border-primary/40'
+                              }
+                            `}
+                          >
+                            <PinDisplay avatar={p.id} color={p.color} size={44} />
+                            {on && (
+                              <motion.div 
+                                layoutId="activePin"
+                                className="absolute -bottom-1 w-1.5 h-1.5 rounded-full bg-primary"
+                              />
+                            )}
+                          </motion.button>
+                        );
+                      })}
+                      <motion.button
+                        type="button"
+                        onClick={() => setAvatar(CUSTOM_PIN_ID)} title="Personalizado"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={`
+                          flex items-center justify-center py-2 rounded-2xl cursor-pointer transition-all relative bg-surface-container/30
+                          ${isCustom
+                            ? 'border border-primary bg-primary/5 shadow-md shadow-primary/10'
+                            : 'border border-outline-variant/30 hover:border-primary/40'
+                          }
+                        `}
+                      >
+                        <PinDisplay avatar={CUSTOM_PIN_ID} color={customColor} size={44} />
+                        {isCustom && (
+                           <motion.div 
+                            layoutId="activePin"
+                            className="absolute -bottom-1 w-1.5 h-1.5 rounded-full bg-primary"
+                          />
+                        )}
+                      </motion.button>
+                    </div>
+
+                    {isCustom && (
+                       <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 p-5 rounded-3xl bg-surface-container/50 border border-outline-variant/20"
+                       >
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Cor Personalizada</span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-5 h-5 rounded-full border border-white shadow-sm" style={{ background: customColor }} />
+                              <span className="text-[10px] font-mono text-on-surface-variant uppercase">{customColor}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-5">
+                            <div>
+                              <p className="text-[10px] font-bold text-on-surface-variant uppercase mb-2 ml-1">Escolhe a cor do teu Peão</p>
+                              <div className="grid grid-cols-6 gap-2 mb-4">
+                                 {['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#64748b'].map(c => (
+                                   <button 
+                                     key={c}
+                                     type="button"
+                                     onClick={() => setCustomColor(c)}
+                                     className="w-full aspect-square rounded-full border-2 transition-transform hover:scale-110 active:scale-95"
+                                     style={{ background: c, borderColor: customColor === c ? 'white' : 'transparent', boxShadow: customColor === c ? '0 0 0 1px #cbd5e1' : 'none' }}
+                                   />
+                                 ))}
+                              </div>
+                              <div className="flex items-center gap-3 p-3 bg-surface rounded-2xl border border-outline-variant/20">
+                                <input 
+                                  type="color" 
+                                  value={customColor} 
+                                  onChange={(e) => setCustomColor(e.target.value)}
+                                  className="w-12 h-10 rounded-lg cursor-pointer bg-transparent border-none p-0"
+                                />
+                                <div className="min-w-0">
+                                   <p className="text-[10px] font-bold text-on-surface uppercase">Seletor Livre</p>
+                                   <p className="text-[9px] text-on-surface-variant leading-tight">Escolhe a tonalidade exata.</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                       </motion.div>
+                    )}
+                  </div>
+
+                  <div className="mt-2 text-center h-5">
+                    {avatar && avatar !== CUSTOM_PIN_ID && (
+                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                        {PIN_OPTIONS.find(p => p.id === avatar)?.label} - cor: <span style={{color: playerColor}}>■</span>
+                      </span>
+                    )}
+                    {isCustom && (
+                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+                        Personalizado - cor: <span style={{color: customColor}}>■</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button type="submit" disabled={isConnecting} className="btn-primary">
+                    {isConnecting ? (
+                      <><Loader2 className="animate-spin w-4 h-4" /> A entrar…</>
+                    ) : (
+                      <>🎲 Entrar na Sala</>
+                    )}
+                  </button>
+
+                  <RecentRooms onRejoin={handleRejoin} compact />
+                </motion.form>
+              ) : mode === 'recent' ? (
+                <motion.div
+                  key="recent"
+                  className="flex flex-col gap-5"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <RecentRooms onRejoin={handleRejoin} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </motion.div>
+
+          <p className="text-center text-on-surface-variant/50 text-xs mt-6 select-none">
+            Abre em vários dispositivos para jogar em tempo real
+          </p>
         </div>
-
-        <p style={{textAlign:'center',color:'#2d5231',fontSize:'0.7rem',marginTop:'1.25rem',userSelect:'none'}}>
-          Abre em vários dispositivos para jogar em tempo real
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function TBtn({active,onClick,children}){
-  return (
-    <button type="button" onClick={onClick}
-      style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:'0.625rem',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:600,cursor:'pointer',border:'none',transition:'all 0.15s',...(active?{background:'white',color:'#0a1a0a',boxShadow:'0 2px 8px rgba(0,0,0,0.3)'}:{background:'transparent',color:'#4ade80'})}}>
-      {children}
-    </button>
+      </main>
+    </PageTransition>
   );
 }
