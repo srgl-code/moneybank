@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe: Banker Dashboard Redesign — Prestige Ledger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Comic Sans MS', 'Marker Felt', cursive;
+      background: #f5f5f5; color: #333;
+      padding: 16px; max-width: 420px; margin: 0 auto;
+    }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; text-align: center; color: #999; margin-bottom: 24px; }
+    .badge-reuse {
+      position: absolute; top: -6px; right: -6px;
+      background: #4CAF50; color: white; padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial; font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .badge-new {
+      position: absolute; top: -6px; right: -6px;
+      background: #FF9800; color: white; padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial; font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .wireframe-container {
+      background: white; border: 2px solid #333;
+      border-radius: 20px; overflow: hidden; box-shadow: 3px 3px 0 #ccc;
+    }
+    .component-wrapper { position: relative; }
+    .annotation {
+      font-family: Arial; font-size: 10px; color: #999;
+      font-style: italic; padding: 4px 16px;
+    }
+
+    /* Header */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1.5px dashed #ccc;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .logo-text { font-size: 13px; font-weight: bold; letter-spacing: -0.5px; }
+    .room-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border: 2px solid #333;
+      border-radius: 10px; font-size: 13px;
+      font-weight: bold; letter-spacing: 3px;
+      cursor: pointer; box-shadow: 2px 2px 0 #ccc;
+    }
+    .room-copy { font-size: 12px; }
+    .header-actions { display: flex; gap: 6px; }
+    .header-btn {
+      width: 32px; height: 32px; border: 1.5px solid #ccc;
+      border-radius: 10px; background: #fafafa;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; cursor: pointer;
+    }
+    .header-btn.danger {
+      border-color: #999; color: #999;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; padding: 16px;
+    }
+    .stat-card {
+      padding: 14px 10px; border: 1.5px solid #ccc;
+      border-radius: 14px; text-align: center;
+      background: #fafafa; position: relative;
+    }
+    .stat-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+    .stat-value { font-size: 18px; font-weight: bold; }
+    .stat-label { font-size: 8px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* Distribution chart */
+    .distribution {
+      margin: 0 16px 16px; padding: 16px;
+      border: 1.5px solid #ccc; border-radius: 14px;
+      background: #fafafa; position: relative;
+    }
+    .dist-header {
+      display: flex; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .dist-title { font-size: 11px; font-weight: bold; color: #333; }
+    .dist-total { font-size: 10px; color: #999; }
+    .dist-bars {
+      display: flex; gap: 3px; align-items: flex-end; height: 50px;
+    }
+    .dist-bar {
+      flex: 1; border-radius: 4px 4px 0 0;
+      position: relative;
+    }
+    .dist-bar-label {
+      position: absolute; bottom: -16px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 7px; color: #999; white-space: nowrap;
+    }
+    .dist-legend {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 20px;
+    }
+    .legend-item {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 9px; color: #666;
+    }
+    .legend-dot {
+      width: 8px; height: 8px; border-radius: 2px;
+    }
+
+    /* Quick actions - functional */
+    .quick-actions-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 8px; padding: 0 16px 16px;
+    }
+    .qa-btn {
+      padding: 12px 6px; border: 2px solid #ccc;
+      border-radius: 14px; text-align: center;
+      cursor: pointer; background: #fafafa;
+    }
+    .qa-btn.primary {
+      border-color: #333; background: #333; color: white;
+      box-shadow: 2px 2px 0 #999;
+    }
+    .qa-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+    .qa-label { font-size: 9px; font-weight: bold; }
+    .qa-sub { font-size: 8px; color: inherit; opacity: 0.6; }
+
+    /* Content tabs */
+    .content-tabs {
+      display: flex; border-top: 1.5px dashed #ccc;
+      border-bottom: 1.5px dashed #ccc;
+      overflow-x: auto;
+    }
+    .c-tab {
+      flex: none; padding: 10px 12px; text-align: center;
+      font-size: 10px; font-weight: bold; cursor: pointer;
+      border-bottom: 2px solid transparent; color: #999;
+      white-space: nowrap;
+    }
+    .c-tab.active { color: #333; border-bottom-color: #333; }
+    .c-tab-count {
+      display: inline-block; background: #333; color: white;
+      font-size: 8px; padding: 1px 5px; border-radius: 8px; margin-left: 2px;
+    }
+    .c-tab-count.warning { background: #999; }
+
+    /* Player cards */
+    .player-list { padding: 12px 16px; }
+    .player-card {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px; margin-bottom: 8px;
+      border: 1.5px solid #ccc; border-radius: 16px;
+      background: #fafafa;
+    }
+    .player-rank {
+      width: 24px; text-align: center;
+      font-size: 14px; font-weight: bold; color: #999;
+    }
+    .player-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 2px solid #ccc; background: #e8e8e8;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .player-info { flex: 1; }
+    .player-name { font-size: 12px; font-weight: bold; }
+    .player-balance { font-size: 11px; color: #666; }
+    .player-actions { display: flex; gap: 4px; }
+    .player-btn {
+      padding: 6px 10px; border: 1.5px solid #ccc;
+      border-radius: 8px; font-size: 9px; font-weight: bold;
+      cursor: pointer; background: white;
+    }
+    .player-btn.add { border-color: #333; color: #333; }
+    .player-btn.debit { border-color: #999; color: #999; }
+
+    /* Approval queue */
+    .approval-queue { padding: 12px 16px; }
+    .approval-card {
+      padding: 12px; margin-bottom: 8px;
+      border: 2px dashed #999; border-radius: 14px;
+      cursor: pointer; background: #fafafa;
+    }
+    .approval-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .approval-flow {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px;
+    }
+    .approval-arrow { font-weight: bold; }
+    .approval-amount { font-size: 16px; font-weight: bold; }
+    .approval-reason { font-size: 9px; color: #999; font-style: italic; }
+    .approval-cta { font-size: 9px; font-weight: bold; color: #333; margin-top: 4px; }
+
+    /* Activity feed */
+    .activity-feed { padding: 12px 16px; }
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #eee;
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ccc; margin-top: 4px; flex-shrink: 0;
+    }
+    .activity-text { font-size: 10px; color: #333; flex: 1; }
+    .activity-time { font-size: 9px; color: #ccc; flex-shrink: 0; }
+
+    /* Property overview */
+    .property-overview { padding: 12px 16px; }
+    .property-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; margin-bottom: 6px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: #fafafa;
+    }
+    .prop-left { display: flex; align-items: center; gap: 8px; }
+    .prop-color-dot {
+      width: 12px; height: 12px; border-radius: 3px;
+    }
+    .prop-name { font-size: 11px; font-weight: bold; }
+    .prop-owner { font-size: 9px; color: #999; }
+    .prop-value { font-size: 11px; font-weight: bold; color: #333; }
+
+    /* Danger zone */
+    .danger-zone {
+      padding: 12px 16px; margin-top: 8px;
+      border-top: 2px dashed #ccc;
+    }
+    .danger-row { display: flex; gap: 8px; }
+    .danger-btn {
+      flex: 1; padding: 10px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      text-align: center; font-size: 10px; font-weight: bold;
+      cursor: pointer; background: #fafafa; color: #999;
+    }
+    .danger-btn.close { border-color: #999; border-style: dashed; }
+
+    /* Bottom nav */
+    .bottom-nav {
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 8px 16px 20px; border-top: 1.5px dashed #ccc;
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      font-size: 9px; color: #999; cursor: pointer; padding: 4px 8px;
+    }
+    .nav-item.active {
+      color: #333; background: #e0e0e0;
+      border-radius: 14px; padding: 10px 18px;
+      box-shadow: 2px 2px 0 #ccc;
+    }
+    .nav-icon { font-size: 18px; }
+
+    .notes-section {
+      margin-top: 24px; padding: 16px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: white; font-family: Arial;
+    }
+    .notes-section h2 { font-size: 14px; margin-bottom: 12px; font-family: Arial; }
+    .notes-section ul { padding-left: 16px; font-size: 11px; color: #666; line-height: 1.8; }
+    .notes-section strong { color: #333; }
+  </style>
+</head>
+<body>
+
+<h1>🏦 Painel do Bancário — Redesign Wireframe</h1>
+<p class="subtitle">Bold & Playful • Analytics + Ações Funcionais + Propriedades</p>
+
+<div class="wireframe-container">
+
+  <!-- HEADER -->
+  <!-- REUSABLE: AppHeader from src/components/ui/AppHeader.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/AppHeader.jsx">[REUSE] AppHeader</span>
+    <div class="header">
+      <div class="header-left">
+        <div class="logo-text">🏦 PRESTIGE LEDGER</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px">
+        <div class="room-chip">
+          ABC123
+          <span class="room-copy">📋</span>
+        </div>
+        <div class="header-btn danger">✕</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS ROW -->
+  <!-- NEW COMPONENT: GameStats (overview cards) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: GameStats">[NEW] GameStats</span>
+    <div class="stats-row">
+      <div class="stat-card">
+        <span class="stat-icon">💰</span>
+        <div class="stat-value">M$ 24k</div>
+        <div class="stat-label">Em Circulação</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon">👥</span>
+        <div class="stat-value">5</div>
+        <div class="stat-label">Jogadores</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon">⏳</span>
+        <div class="stat-value">2</div>
+        <div class="stat-label">Pendentes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISTRIBUTION CHART -->
+  <!-- NEW COMPONENT: DistributionChart -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: DistributionChart">[NEW] DistributionChart</span>
+    <div class="distribution">
+      <div class="dist-header">
+        <div class="dist-title">📊 Distribuição de Riqueza</div>
+        <div class="dist-total">Total: M$ 24.100</div>
+      </div>
+      <div class="dist-bars">
+        <div class="dist-bar" style="height:100%; background:#333">
+          <span class="dist-bar-label">Maria</span>
+        </div>
+        <div class="dist-bar" style="height:80%; background:#666">
+          <span class="dist-bar-label">Pedro</span>
+        </div>
+        <div class="dist-bar" style="height:65%; background:#999">
+          <span class="dist-bar-label">Ana</span>
+        </div>
+        <div class="dist-bar" style="height:50%; background:#bbb">
+          <span class="dist-bar-label">João</span>
+        </div>
+        <div class="dist-bar" style="height:35%; background:#ddd">
+          <span class="dist-bar-label">Lucas</span>
+        </div>
+      </div>
+      <div class="dist-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#333"></div> Maria (M$ 6.800)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#666"></div> Pedro (M$ 5.400)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#999"></div> Ana (M$ 4.700)</div>
+      </div>
+      <div class="annotation" style="padding:4px 0 0">Gráfico de barras com distribuição por jogador</div>
+    </div>
+  </div>
+
+  <!-- QUICK ACTIONS (NOW FUNCTIONAL) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: QuickActionButton (functional)">[NEW] QuickActions</span>
+    <div class="quick-actions-grid">
+      <div class="qa-btn primary">
+        <span class="qa-icon">🎯</span>
+        <span class="qa-label">Largada</span>
+        <span class="qa-sub" style="color:white">+M$ 200</span>
+      </div>
+      <div class="qa-btn">
+        <span class="qa-icon">⚖️</span>
+        <span class="qa-label">Multa</span>
+        <span class="qa-sub">Custom</span>
+      </div>
+      <div class="qa-btn">
+        <span class="qa-icon">🏠</span>
+        <span class="qa-label">Leilão</span>
+        <span class="qa-sub">Iniciar</span>
+      </div>
+      <div class="qa-btn">
+        <span class="qa-icon">🃏</span>
+        <span class="qa-label">Sorte</span>
+        <span class="qa-sub">Carta</span>
+      </div>
+    </div>
+    <div class="annotation">Ações agora têm handlers reais — Largada paga a todos, Multa abre input, etc.</div>
+  </div>
+
+  <!-- CONTENT TABS -->
+  <div class="content-tabs">
+    <div class="c-tab active">👥 Jogadores</div>
+    <div class="c-tab">💳 Aprovações <span class="c-tab-count warning">2</span></div>
+    <div class="c-tab">📋 Extrato <span class="c-tab-count">18</span></div>
+    <div class="c-tab">🏠 Propriedades</div>
+    <div class="c-tab">📡 Atividade</div>
+  </div>
+
+  <!-- TAB: JOGADORES -->
+  <div class="player-list">
+    <div class="player-card">
+      <div class="player-rank">1</div>
+      <div class="player-avatar">📍</div>
+      <div class="player-info">
+        <div class="player-name">Maria Silva</div>
+        <div class="player-balance">M$ 6.800 • 4 propriedades</div>
+      </div>
+      <div class="player-actions">
+        <div class="player-btn debit">− Cobrar</div>
+        <div class="player-btn add">+ Pagar</div>
+      </div>
+    </div>
+    <div class="player-card">
+      <div class="player-rank">2</div>
+      <div class="player-avatar">📍</div>
+      <div class="player-info">
+        <div class="player-name">Pedro Santos</div>
+        <div class="player-balance">M$ 5.400 • 3 propriedades</div>
+      </div>
+      <div class="player-actions">
+        <div class="player-btn debit">− Cobrar</div>
+        <div class="player-btn add">+ Pagar</div>
+      </div>
+    </div>
+    <div class="player-card">
+      <div class="player-rank">3</div>
+      <div class="player-avatar">📍</div>
+      <div class="player-info">
+        <div class="player-name">Ana Costa</div>
+        <div class="player-balance">M$ 4.700 • 2 propriedades</div>
+      </div>
+      <div class="player-actions">
+        <div class="player-btn debit">− Cobrar</div>
+        <div class="player-btn add">+ Pagar</div>
+      </div>
+    </div>
+    <div class="annotation">Cada card mostra saldo + contagem de propriedades</div>
+  </div>
+
+  <!-- TAB: APROVAÇÕES -->
+  <div style="border-top: 1.5px dashed #ccc">
+    <div class="annotation" style="padding:12px 16px 4px">— Aba "Aprovações" —</div>
+    <!-- REUSABLE: ApprovalModal from src/components/ApprovalModal.jsx -->
+    <div class="component-wrapper">
+      <span class="badge-reuse" title="src/components/ApprovalModal.jsx">[REUSE] ApprovalModal</span>
+      <div class="approval-queue">
+        <div class="approval-card">
+          <div class="approval-header">
+            <div class="approval-flow">
+              📍 Maria <span class="approval-arrow">→</span> 📍 Pedro
+            </div>
+            <div class="approval-amount">M$ 500</div>
+          </div>
+          <div class="approval-reason">"Compra de propriedade"</div>
+          <div class="approval-cta">Toca para verificar e aprovar ▶</div>
+        </div>
+        <div class="approval-card">
+          <div class="approval-header">
+            <div class="approval-flow">
+              📍 Ana <span class="approval-arrow">→</span> 📍 João
+            </div>
+            <div class="approval-amount">M$ 200</div>
+          </div>
+          <div class="approval-reason">"Aluguel"</div>
+          <div class="approval-cta">Toca para verificar e aprovar ▶</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: PROPRIEDADES (NEW) -->
+  <div style="border-top: 1.5px dashed #ccc">
+    <div class="annotation" style="padding:12px 16px 4px">— Aba "Propriedades" —</div>
+    <!-- NEW COMPONENT: PropertyOverview (banker view) -->
+    <div class="component-wrapper">
+      <span class="badge-new" title="New: PropertyOverview">[NEW] PropertyOverview</span>
+      <div class="property-overview">
+        <div class="property-row">
+          <div class="prop-left">
+            <div class="prop-color-dot" style="background:#999"></div>
+            <div>
+              <div class="prop-name">Av. Paulista</div>
+              <div class="prop-owner">Maria Silva</div>
+            </div>
+          </div>
+          <div class="prop-value">M$ 400</div>
+        </div>
+        <div class="property-row">
+          <div class="prop-left">
+            <div class="prop-color-dot" style="background:#666"></div>
+            <div>
+              <div class="prop-name">Rua Augusta</div>
+              <div class="prop-owner">Pedro Santos</div>
+            </div>
+          </div>
+          <div class="prop-value">M$ 260</div>
+        </div>
+        <div class="property-row">
+          <div class="prop-left">
+            <div class="prop-color-dot" style="background:#bbb"></div>
+            <div>
+              <div class="prop-name">Copacabana</div>
+              <div class="prop-owner">Disponível</div>
+            </div>
+          </div>
+          <div class="prop-value">M$ 320</div>
+        </div>
+        <div class="annotation" style="padding:4px 0 0">Lista de todas as propriedades com donos e disponibilidade</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ATIVIDADE (NEW) -->
+  <div style="border-top: 1.5px dashed #ccc">
+    <div class="annotation" style="padding:12px 16px 4px">— Aba "Atividade" (Feed em tempo real) —</div>
+    <!-- NEW COMPONENT: ActivityFeed -->
+    <div class="component-wrapper">
+      <span class="badge-new" title="New: ActivityFeed">[NEW] ActivityFeed</span>
+      <div class="activity-feed">
+        <div class="activity-item">
+          <div class="activity-dot" style="background:#333"></div>
+          <div class="activity-text"><strong>Maria</strong> comprou <strong>Av. Paulista</strong> por M$ 400</div>
+          <div class="activity-time">agora</div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:#666"></div>
+          <div class="activity-text"><strong>Pedro</strong> pagou M$ 50 de aluguel a <strong>Maria</strong></div>
+          <div class="activity-time">2min</div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:#999"></div>
+          <div class="activity-text"><strong>Ana</strong> passou na Largada e recebeu M$ 200</div>
+          <div class="activity-time">5min</div>
+        </div>
+        <div class="activity-item">
+          <div class="activity-dot" style="background:#ccc"></div>
+          <div class="activity-text"><strong>João</strong> entrou na sala</div>
+          <div class="activity-time">8min</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DANGER ZONE -->
+  <div class="danger-zone">
+    <div class="danger-row">
+      <div class="danger-btn">🔄 Reiniciar Saldos</div>
+      <div class="danger-btn close">✕ Encerrar Sala</div>
+    </div>
+    <div class="annotation">Ambos pedem confirmação antes de executar</div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <!-- REUSABLE: BottomNav from src/components/ui/BottomNav.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/BottomNav.jsx">[REUSE] BottomNav</span>
+    <div class="bottom-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">👥</span>
+        Jogadores
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">💳</span>
+        Aprovações
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📡</span>
+        Atividade
+      </div>
+    </div>
+    <div class="annotation">Bottom nav labels em PT-BR com ícones correspondentes ao conteúdo</div>
+  </div>
+
+</div>
+
+<!-- Notes -->
+<div class="notes-section">
+  <h2>📝 Notas do Redesign — Banker Dashboard</h2>
+  <ul>
+    <li><strong>Stats row</strong> — 3 cards: dinheiro em circulação, nº jogadores, transferências pendentes</li>
+    <li><strong>Gráfico de distribuição</strong> — Barras mostrando riqueza relativa de cada jogador</li>
+    <li><strong>Quick Actions FUNCIONAIS</strong> — Largada (paga +200 a todos), Multa (abre input), Leilão (início), Sorte (carta aleatória)</li>
+    <li><strong>5 abas de conteúdo</strong> — Jogadores / Aprovações / Extrato / Propriedades / Atividade</li>
+    <li><strong>Property overview</strong> — Todas as propriedades do jogo com dono e disponibilidade</li>
+    <li><strong>Activity feed</strong> — Timeline de eventos em tempo real (compras, transferências, entradas)</li>
+    <li><strong>Player cards</strong> — Agora mostram contagem de propriedades junto ao saldo</li>
+    <li><strong>Zona de perigo</strong> — Reiniciar/Encerrar com confirmação obrigatória</li>
+    <li><strong>100% PT-BR</strong> — "Cobrar" ao invés de "Deduct", "Pagar" ao invés de "Add"</li>
+    <li><strong>Bottom nav corrigido</strong> — Ícones correspondem ao conteúdo (não mais mapeamento confuso)</li>
+  </ul>
+  <p style="margin-top:12px"><strong>Reutilizados (3):</strong> AppHeader, ApprovalModal, BottomNav</p>
+  <p><strong>Novos (5):</strong> GameStats, DistributionChart, QuickActions (funcional), PropertyOverview, ActivityFeed</p>
+</div>
+
+</body>
+</html>

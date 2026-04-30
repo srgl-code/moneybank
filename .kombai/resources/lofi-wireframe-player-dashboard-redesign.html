@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe: Player Dashboard Redesign — Prestige Ledger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Comic Sans MS', 'Marker Felt', cursive;
+      background: #f5f5f5;
+      color: #333;
+      padding: 16px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; color: #333; }
+    .subtitle { font-size: 12px; text-align: center; color: #999; margin-bottom: 24px; }
+
+    /* Reuse/New badges */
+    .badge-reuse {
+      position: absolute; top: -6px; right: -6px;
+      background: #4CAF50; color: white;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial, sans-serif;
+      font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .badge-new {
+      position: absolute; top: -6px; right: -6px;
+      background: #FF9800; color: white;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial, sans-serif;
+      font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+
+    .wireframe-container {
+      background: white;
+      border: 2px solid #333;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 3px 3px 0 #ccc;
+    }
+
+    /* Header */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1.5px dashed #ccc;
+      position: relative;
+    }
+    .header .logo { font-size: 14px; font-weight: bold; letter-spacing: -0.5px; }
+    .header-btn {
+      width: 32px; height: 32px;
+      border: 1.5px solid #999; border-radius: 8px;
+      background: #f5f5f5; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; cursor: pointer;
+    }
+
+    /* Balance hero */
+    .balance-hero {
+      text-align: center; padding: 32px 16px 24px;
+      border-bottom: 1.5px dashed #ccc;
+      position: relative;
+    }
+    .balance-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+    .balance-value { font-size: 42px; font-weight: bold; color: #333; letter-spacing: -1px; }
+    .balance-change {
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-top: 8px; padding: 4px 12px;
+      border: 1px solid #ccc; border-radius: 20px;
+      font-size: 11px; color: #666;
+    }
+    .balance-change .arrow { font-size: 14px; }
+
+    /* Quick transfer */
+    .quick-transfer {
+      padding: 16px;
+      border-bottom: 1.5px dashed #ccc;
+      position: relative;
+    }
+    .section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px;
+    }
+    .section-title { font-size: 13px; font-weight: bold; color: #333; }
+    .section-action { font-size: 11px; color: #666; text-decoration: underline; cursor: pointer; }
+
+    .recipients-row {
+      display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px;
+    }
+    .recipient {
+      flex-shrink: 0; width: 56px; text-align: center; cursor: pointer;
+      position: relative;
+    }
+    .recipient-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 2px solid #ccc; background: #f0f0f0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; margin: 0 auto 4px;
+    }
+    .recipient-name { font-size: 9px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Transfer CTA */
+    .transfer-cta {
+      margin-top: 12px; padding: 14px;
+      border: 2px solid #333; border-radius: 24px;
+      text-align: center; font-weight: bold; font-size: 13px;
+      background: #333; color: white; cursor: pointer;
+      position: relative;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex; border-bottom: 1.5px dashed #ccc;
+      position: relative;
+    }
+    .tab {
+      flex: 1; padding: 10px 8px; text-align: center;
+      font-size: 11px; font-weight: bold; cursor: pointer;
+      border-bottom: 2px solid transparent; color: #999;
+    }
+    .tab.active { color: #333; border-bottom-color: #333; }
+    .tab .tab-count {
+      display: inline-block; background: #ccc; color: white;
+      font-size: 9px; padding: 1px 5px; border-radius: 8px;
+      margin-left: 4px;
+    }
+
+    /* Transaction list */
+    .tx-list { padding: 12px 16px; }
+    .tx-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #eee;
+      position: relative;
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-left { display: flex; align-items: center; gap: 10px; }
+    .tx-icon {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1.5px solid #ccc; background: #f5f5f5;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .tx-desc { font-size: 12px; font-weight: bold; color: #333; }
+    .tx-time { font-size: 10px; color: #999; }
+    .tx-amount { font-size: 13px; font-weight: bold; }
+    .tx-credit { color: #333; }
+    .tx-debit { color: #999; }
+
+    /* Bottom nav */
+    .bottom-nav {
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 8px 16px 16px;
+      border-top: 1.5px dashed #ccc;
+      position: relative;
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      font-size: 9px; color: #999; cursor: pointer;
+      padding: 4px 8px;
+    }
+    .nav-item.active {
+      color: #333;
+      background: #e0e0e0;
+      border-radius: 12px;
+      padding: 8px 16px;
+    }
+    .nav-icon { font-size: 20px; }
+
+    /* Floating action */
+    .fab {
+      position: relative;
+      width: 52px; height: 52px;
+      border-radius: 50%; border: 2px solid #333;
+      background: #333; color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; cursor: pointer;
+      margin: -20px auto 0;
+    }
+
+    /* Info banner */
+    .info-banner {
+      margin: 0 16px; padding: 10px 14px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: #fafafa;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; color: #666;
+      position: relative;
+    }
+    .info-icon { font-size: 16px; }
+
+    .component-wrapper { position: relative; }
+
+    /* Summary cards */
+    .summary-row {
+      display: flex; gap: 8px; padding: 12px 16px;
+      border-bottom: 1.5px dashed #ccc;
+    }
+    .summary-card {
+      flex: 1; padding: 12px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      text-align: center; position: relative;
+    }
+    .summary-label { font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+    .summary-value { font-size: 18px; font-weight: bold; color: #333; margin-top: 4px; }
+    .summary-sub { font-size: 9px; color: #999; margin-top: 2px; }
+
+    /* Room code banner */
+    .room-banner {
+      margin: 12px 16px 0;
+      padding: 8px 14px;
+      border: 1.5px dashed #999;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; color: #666;
+    }
+    .room-code { font-weight: bold; font-size: 14px; letter-spacing: 3px; color: #333; }
+
+    .annotation {
+      font-family: Arial, sans-serif;
+      font-size: 10px;
+      color: #999;
+      font-style: italic;
+      padding: 4px 16px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Player Dashboard — Redesign Wireframe</h1>
+<p class="subtitle">Balanced approach: existing components + new improvements</p>
+
+<div class="wireframe-container">
+
+  <!-- HEADER -->
+  <!-- REUSABLE: AppHeader from src/components/ui/AppHeader.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/AppHeader.jsx">[REUSE] AppHeader</span>
+    <div class="header">
+      <div class="header-btn">🏦</div>
+      <div class="logo">PRESTIGE LEDGER</div>
+      <div class="header-btn">⎋</div>
+    </div>
+  </div>
+
+  <!-- ROOM CODE BANNER (new) -->
+  <!-- NEW COMPONENT: RoomCodeBanner (inline in PlayerDashboard) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: inline in PlayerDashboard.jsx">[NEW] RoomCodeBanner</span>
+    <div class="room-banner">
+      <span>Sala:</span>
+      <span class="room-code">A B C 1 2 3</span>
+      <span style="cursor:pointer">📋</span>
+    </div>
+  </div>
+
+  <!-- BALANCE HERO -->
+  <!-- REUSABLE: AnimatedBalance from src/components/ui/AnimatedBalance.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/AnimatedBalance.jsx">[REUSE] AnimatedBalance</span>
+    <div class="balance-hero">
+      <div class="balance-label">Patrimônio Total</div>
+      <div class="balance-value">M$ 15.400</div>
+      <div class="balance-change">
+        <span class="arrow">▲</span>
+        +M$ 3.400 desde o início
+      </div>
+    </div>
+  </div>
+
+  <!-- SUMMARY CARDS (new) -->
+  <!-- NEW COMPONENT: StatCards (summary row) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: StatCards section">[NEW] StatCards</span>
+    <div class="summary-row">
+      <div class="summary-card">
+        <div class="summary-label">Posição</div>
+        <div class="summary-value">2º</div>
+        <div class="summary-sub">de 5 jogadores</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Transações</div>
+        <div class="summary-value">12</div>
+        <div class="summary-sub">hoje</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Tendência</div>
+        <div class="summary-value">▲</div>
+        <div class="summary-sub">subindo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUICK TRANSFER -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/TransferModal.jsx">[REUSE] TransferModal</span>
+    <div class="quick-transfer">
+      <div class="section-header">
+        <span class="section-title">Transferir</span>
+        <span class="section-action">Ver todos →</span>
+      </div>
+
+      <div class="annotation">← Deslize para ver mais jogadores</div>
+      <div class="recipients-row">
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Maria</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Pedro</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Ana</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">João</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Lucas</div>
+        </div>
+      </div>
+
+      <!-- REUSABLE: PinDisplay from src/components/PinIcon.jsx -->
+      <div class="component-wrapper" style="position:relative; display:inline-block; margin-top: 4px;">
+        <span class="badge-reuse" style="top:-4px;right:-4px" title="src/components/PinIcon.jsx">[REUSE] PinDisplay</span>
+        <span style="font-size:10px; color:#999">(each avatar uses PinDisplay)</span>
+      </div>
+
+      <div class="transfer-cta">
+        ↗ TRANSFERIR FUNDOS
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS: Extrato / Ranking -->
+  <!-- NEW: Integrated tab system (replaces bottom nav for content switching) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: Inline tabs for content">[NEW] ContentTabs</span>
+    <div class="tabs">
+      <div class="tab active">
+        📋 Extrato <span class="tab-count">6</span>
+      </div>
+      <div class="tab">
+        🏆 Ranking
+      </div>
+    </div>
+  </div>
+
+  <!-- TRANSACTION LIST -->
+  <!-- REUSABLE: TransactionHistory from src/components/TransactionHistory.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/TransactionHistory.jsx">[REUSE] TransactionHistory</span>
+    <div class="tx-list">
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">🏠</div>
+          <div>
+            <div class="tx-desc">Aluguel Recebido</div>
+            <div class="tx-time">de Maria • 14:32</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-credit">+M$ 50</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">📜</div>
+          <div>
+            <div class="tx-desc">Imposto de Luxo</div>
+            <div class="tx-time">do Banco • 14:15</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-debit">-M$ 75</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">🎁</div>
+          <div>
+            <div class="tx-desc">Passou na Largada</div>
+            <div class="tx-time">do Banco • 13:50</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-credit">+M$ 200</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">🏠</div>
+          <div>
+            <div class="tx-desc">Compra de Propriedade</div>
+            <div class="tx-time">para Banco • 13:22</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-debit">-M$ 500</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INFO BANNER (new: pending transfers) -->
+  <!-- NEW COMPONENT: PendingBanner (shows pending transfer status) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: PendingBanner component">[NEW] PendingBanner</span>
+    <div class="info-banner" style="margin-bottom: 12px;">
+      <span class="info-icon">⏳</span>
+      <span>1 transferência pendente de aprovação do bancário</span>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <!-- REUSABLE: BottomNav from src/components/ui/BottomNav.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/BottomNav.jsx">[REUSE] BottomNav</span>
+    <div class="bottom-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">💰</span>
+        Carteira
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🏆</span>
+        Ranking
+      </div>
+    </div>
+    <div class="annotation">Nota: labels em PT-BR. Ícones correspondem ao conteúdo.</div>
+  </div>
+
+</div>
+
+<div style="margin-top: 24px; padding: 16px; border: 1.5px solid #ccc; border-radius: 12px; background: white;">
+  <h2 style="font-size: 14px; margin-bottom: 12px;">📝 Notas do Redesign</h2>
+
+  <div style="font-size: 11px; color: #666; line-height: 1.6;">
+    <p><strong>Mudanças Principais:</strong></p>
+    <ul style="padding-left: 16px; margin: 8px 0;">
+      <li><strong>Textos 100% em PT-BR</strong> — "Patrimônio Total" ao invés de "Total Wealth", "Transferir" ao invés de "Initiate Transfer"</li>
+      <li><strong>Novos StatCards</strong> — Posição no ranking, total de transações, tendência visíveis de relance</li>
+      <li><strong>Room Code Banner</strong> — Código da sala visível para o jogador compartilhar facilmente</li>
+      <li><strong>Pending Banner</strong> — Status de transferências pendentes de aprovação</li>
+      <li><strong>Tabs no conteúdo</strong> — Extrato e Ranking como abas inline ao invés de depender apenas do bottom nav</li>
+      <li><strong>Bottom Nav simplificado</strong> — Apenas 2 abas (Carteira/Ranking) com labels em PT-BR</li>
+      <li><strong>Landmarks acessíveis</strong> — main, nav, section com roles apropriados</li>
+    </ul>
+
+    <p style="margin-top: 12px;"><strong>Componentes Reutilizados (5):</strong></p>
+    <ul style="padding-left: 16px; margin: 8px 0;">
+      <li>AppHeader — Cabeçalho com logo e botão de sair</li>
+      <li>AnimatedBalance — Saldo animado com direção</li>
+      <li>TransferModal — Modal de transferência (aberto pelo CTA)</li>
+      <li>TransactionHistory — Lista de transações</li>
+      <li>BottomNav — Navegação inferior mobile</li>
+    </ul>
+
+    <p style="margin-top: 12px;"><strong>Novos Componentes (4):</strong></p>
+    <ul style="padding-left: 16px; margin: 8px 0;">
+      <li>RoomCodeBanner — Mostra código da sala com botão copiar</li>
+      <li>StatCards — Cards resumo (posição, transações, tendência)</li>
+      <li>ContentTabs — Abas inline para Extrato/Ranking</li>
+      <li>PendingBanner — Alerta de transferências pendentes</li>
+    </ul>
+  </div>
+</div>
+
+</body>
+</html>

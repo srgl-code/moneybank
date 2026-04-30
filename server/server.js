@@ -269,11 +269,15 @@ io.on('connection', (socket) => {
         time: new Date().toISOString(),
         fromId: sender.id,
         toId: receiver.id,
-        fromName: sender.name,
-        toName: receiver.name,
+        fromName: sender.isBanker ? 'Banco' : sender.name,
+        toName: receiver.isBanker ? 'Banco' : receiver.name,
+        fromAvatar: sender.isBanker ? '🏦' : sender.avatar,
+        toAvatar: receiver.isBanker ? '🏦' : receiver.avatar,
+        fromColor: sender.color,
+        toColor: receiver.color,
         amount: amt,
         type: 'transfer',
-        description: `${sender.name} pagou M$${amt.toLocaleString('pt-BR')} a ${receiver.name}`,
+        description: `${sender.isBanker ? 'Banco' : sender.name} pagou M$${amt.toLocaleString('pt-BR')} a ${receiver.isBanker ? 'Banco' : receiver.name}`,
       };
 
       room.transactionHistory.push(entry);
@@ -407,7 +411,7 @@ io.on('connection', (socket) => {
   });
 
   // ── request_transfer (Player → Banker queue) ─────────────────────────────────
-  socket.on('request_transfer', ({ roomCode, toId, amount, reason } = {}, callback) => {
+  socket.on('request_transfer', ({ roomCode, toId, amount, reason, metadata } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const code = roomCode?.toUpperCase();
@@ -434,15 +438,16 @@ io.on('connection', (socket) => {
       const request = {
         requestId: uuidv4(),
         fromId,
-        fromName: sender.name,
-        fromAvatar: sender.avatar,
+        fromName: sender.isBanker ? 'Banco' : sender.name,
+        fromAvatar: sender.isBanker ? '🏦' : sender.avatar,
         fromColor: sender.color || null,
         toId,
-        toName: receiver.name,
-        toAvatar: receiver.avatar,
+        toName: receiver.isBanker ? 'Banco' : receiver.name,
+        toAvatar: receiver.isBanker ? '🏦' : receiver.avatar,
         toColor: receiver.color || null,
         amount: amt,
         reason: safeReason,
+        metadata: metadata || null,
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
@@ -493,6 +498,16 @@ io.on('connection', (socket) => {
 
       if (!sender.isBanker)   { sender.balance   -= req.amount; recordBalanceHistory(sender); }
       if (!receiver.isBanker) { receiver.balance += req.amount; recordBalanceHistory(receiver); }
+
+      // Assign property if it's a property purchase
+      if (req.metadata && req.metadata.propertyId) {
+        if (!sender.properties) sender.properties = [];
+        if (!sender.properties.includes(req.metadata.propertyId)) {
+          sender.properties.push(req.metadata.propertyId);
+          // emit update_properties so all clients get the new possession instantly
+          io.in(code).emit('update_properties', { playerId: sender.id, properties: sender.properties });
+        }
+      }
 
       room.pendingTransfers.splice(idx, 1);
 

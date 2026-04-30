@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe — Painel do Bancário (Banker Dashboard)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f5f5; color: #333; display: flex; justify-content: center; padding: 24px; }
+    .phone { width: 375px; min-height: 812px; background: #fff; border: 2px solid #999; border-radius: 24px; overflow: hidden; position: relative; padding-bottom: 72px; }
+    .component-tag { font-size: 9px; background: #e0e0e0; color: #666; padding: 1px 5px; border-radius: 3px; font-family: monospace; display: inline-block; margin-bottom: 4px; }
+    .section { border: 1.5px dashed #bbb; margin: 8px; padding: 12px; border-radius: 8px; position: relative; }
+    .section-label { position: absolute; top: -8px; left: 8px; background: #fff; padding: 0 4px; font-size: 10px; color: #999; font-style: italic; }
+    h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555; }
+    .subtitle { font-size: 11px; color: #888; }
+    .annotation { font-size: 9px; color: #b55; background: #fef0f0; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: block; font-style: italic; }
+    .header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eee; gap: 10px; }
+    .room-code { font-size: 18px; font-weight: 800; letter-spacing: 3px; flex: 1; }
+    .copy-btn { font-size: 12px; color: #888; cursor: pointer; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; }
+    .close-btn { width: 32px; height: 32px; border-radius: 50%; background: #fee; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; }
+    .stat-card { border: 1.5px solid #ddd; border-radius: 10px; padding: 10px; text-align: center; background: #fafafa; }
+    .stat-value { font-size: 18px; font-weight: 800; margin: 2px 0; }
+    .stat-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-icon { font-size: 16px; }
+    .donut-area { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px; }
+    .donut { width: 80px; height: 80px; border-radius: 50%; border: 10px solid #ddd; position: relative; display: flex; align-items: center; justify-content: center; }
+    .donut-center { font-size: 11px; font-weight: 700; }
+    .donut-legend { font-size: 10px; }
+    .donut-legend div { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+    .donut-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .quick-actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 8px; margin: 8px 0; }
+    .qa-btn { border: 1.5px solid #ddd; border-radius: 10px; padding: 12px 8px; text-align: center; background: #fafafa; cursor: pointer; }
+    .qa-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+    .qa-label { font-size: 10px; font-weight: 600; }
+    .qa-sub { font-size: 8px; color: #999; }
+    .tabs { display: flex; gap: 0; background: #eee; border-radius: 10px; padding: 3px; margin: 8px; overflow-x: auto; }
+    .tab { flex: 1; text-align: center; padding: 8px 4px; font-size: 10px; font-weight: 600; border-radius: 8px; color: #888; white-space: nowrap; }
+    .tab.active { background: #fff; color: #333; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .player-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .player-avatar { width: 36px; height: 36px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .player-info { flex: 1; }
+    .player-name { font-size: 13px; font-weight: 600; }
+    .player-balance { font-size: 11px; color: #888; }
+    .player-actions { display: flex; gap: 4px; }
+    .small-btn { padding: 4px 10px; font-size: 10px; font-weight: 600; border-radius: 6px; border: 1px solid #ddd; background: #fafafa; cursor: pointer; }
+    .small-btn.add { background: #e0f0e0; border-color: #aca; color: #2a7a2a; }
+    .small-btn.deduct { background: #f0e0e0; border-color: #daa; color: #a03030; }
+    .feed-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+    .feed-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .feed-text { font-size: 11px; flex: 1; }
+    .feed-time { font-size: 9px; color: #aaa; white-space: nowrap; }
+    .prop-overview-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .prop-color-bar { width: 4px; height: 32px; border-radius: 2px; }
+    .prop-info { flex: 1; }
+    .prop-name { font-size: 12px; font-weight: 600; }
+    .prop-owner { font-size: 10px; color: #888; }
+    .prop-value { font-size: 12px; font-weight: 700; }
+    .bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; height: 64px; border-top: 1px solid #eee; display: flex; align-items: center; background: #fff; }
+    .nav-item { flex: 1; text-align: center; font-size: 10px; color: #999; }
+    .nav-item.active { color: #333; font-weight: 600; }
+    .nav-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+    .pending-badge { background: #c55; color: #fff; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-left: 4px; }
+  </style>
+</head>
+<body>
+  <div class="phone">
+
+    <!-- HEADER -->
+    <div class="header">
+      <span class="component-tag">AppHeader (Banker)</span>
+      <div>
+        <div class="subtitle">Sala</div>
+        <div class="room-code">AB3X9K</div>
+      </div>
+      <div class="copy-btn">📋 Copiar</div>
+      <div style="flex:1;"></div>
+      <div class="close-btn">✕</div>
+      <span class="annotation">Código copiável + confirmação ao fechar</span>
+    </div>
+
+    <!-- STATS ROW -->
+    <div class="section" style="border:none; padding:0;">
+      <span class="component-tag">StatCard × 3</span>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value">M$ 48k</div>
+          <div class="stat-label">Circulação</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value">4</div>
+          <div class="stat-label">Jogadores</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⏳</div>
+          <div class="stat-value">2</div>
+          <div class="stat-label">Pendentes</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISTRIBUTION CHART -->
+    <div class="section">
+      <span class="section-label">Distribuição</span>
+      <span class="component-tag">GameAnalytics (donut)</span>
+      <div class="donut-area">
+        <div class="donut" style="border-color: #6366f1 #f97316 #22c55e #f59e0b; border-width: 10px;">
+          <div class="donut-center">100%</div>
+        </div>
+        <div class="donut-legend">
+          <div><div class="donut-dot" style="background:#6366f1;"></div> Carlos 32%</div>
+          <div><div class="donut-dot" style="background:#f97316;"></div> Ana 27%</div>
+          <div><div class="donut-dot" style="background:#22c55e;"></div> Pedro 24%</div>
+          <div><div class="donut-dot" style="background:#f59e0b;"></div> Maria 17%</div>
+        </div>
+      </div>
+      <span class="annotation">Gráfico donut SVG — distribuição de dinheiro entre jogadores</span>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div style="padding: 0 4px;">
+      <span class="component-tag">QuickActionButton × 3 (funcionais!)</span>
+      <div class="quick-actions-grid">
+        <div class="qa-btn">
+          <span class="qa-icon">🏁</span>
+          <div class="qa-label">Largada</div>
+          <div class="qa-sub">+M$ 200</div>
+        </div>
+        <div class="qa-btn">
+          <span class="qa-icon">💸</span>
+          <div class="qa-label">Multa</div>
+          <div class="qa-sub">selecionar valor</div>
+        </div>
+        <div class="qa-btn">
+          <span class="qa-icon">🏠</span>
+          <div class="qa-label">Leilão</div>
+          <div class="qa-sub">propriedade</div>
+        </div>
+      </div>
+      <span class="annotation">Agora funcionais — abrem modais para selecionar jogador + valor</span>
+    </div>
+
+    <!-- TABS -->
+    <div>
+      <span class="component-tag">SegmentedControl (4 tabs)</span>
+      <div class="tabs">
+        <div class="tab active">👥 Jogadores</div>
+        <div class="tab">✅ Aprovações <span class="pending-badge">2</span></div>
+        <div class="tab">📋 Extrato</div>
+        <div class="tab">🏠 Imóveis</div>
+      </div>
+    </div>
+
+    <!-- TAB: Jogadores -->
+    <div class="section" style="border:none;">
+      <span class="section-label">Tab: Jogadores</span>
+      
+      <div class="player-row">
+        <div class="player-avatar">🎩</div>
+        <div class="player-info">
+          <div class="player-name">Carlos</div>
+          <div class="player-balance">M$ 15.400</div>
+        </div>
+        <div class="player-actions">
+          <div class="small-btn deduct">- Cobrar</div>
+          <div class="small-btn add">+ Pagar</div>
+        </div>
+      </div>
+      <div class="player-row">
+        <div class="player-avatar">🚗</div>
+        <div class="player-info">
+          <div class="player-name">Ana</div>
+          <div class="player-balance">M$ 12.800</div>
+        </div>
+        <div class="player-actions">
+          <div class="small-btn deduct">- Cobrar</div>
+          <div class="small-btn add">+ Pagar</div>
+        </div>
+      </div>
+      <div class="player-row">
+        <div class="player-avatar">🐕</div>
+        <div class="player-info">
+          <div class="player-name">Pedro</div>
+          <div class="player-balance">M$ 11.200</div>
+        </div>
+        <div class="player-actions">
+          <div class="small-btn deduct">- Cobrar</div>
+          <div class="small-btn add">+ Pagar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Imóveis (preview) -->
+    <div class="section" style="border-style: dotted; opacity: 0.6;">
+      <span class="section-label">Tab: Imóveis (preview)</span>
+      <span class="component-tag">PropertyOverview</span>
+      <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <h3 style="margin:0;">Todas as Propriedades</h3>
+        <div class="small-btn">+ Atribuir</div>
+      </div>
+
+      <div class="prop-overview-row">
+        <div class="prop-color-bar" style="background:#3b82f6;"></div>
+        <div class="prop-info">
+          <div class="prop-name">Av. Atlântica</div>
+          <div class="prop-owner">🎩 Carlos</div>
+        </div>
+        <div class="prop-value">M$ 3.200</div>
+      </div>
+      <div class="prop-overview-row">
+        <div class="prop-color-bar" style="background:#ef4444;"></div>
+        <div class="prop-info">
+          <div class="prop-name">Rua Augusta</div>
+          <div class="prop-owner">🎩 Carlos</div>
+        </div>
+        <div class="prop-value">M$ 2.800</div>
+      </div>
+      <div class="prop-overview-row">
+        <div class="prop-color-bar" style="background:#22c55e;"></div>
+        <div class="prop-info">
+          <div class="prop-name">Copacabana</div>
+          <div class="prop-owner">🚗 Ana</div>
+        </div>
+        <div class="prop-value">M$ 1.500</div>
+      </div>
+      <span class="annotation">Visão geral — bancário pode atribuir/remover propriedades</span>
+    </div>
+
+    <!-- ACTIVITY FEED (preview) -->
+    <div class="section" style="border-style: dotted; opacity: 0.6;">
+      <span class="section-label">Feed de Atividades (lateral / overlay)</span>
+      <span class="component-tag">ActivityFeed</span>
+
+      <div class="feed-item">
+        <div class="feed-dot" style="background:#22c55e;"></div>
+        <div class="feed-text"><b>Carlos</b> comprou Av. Atlântica</div>
+        <div class="feed-time">agora</div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-dot" style="background:#f97316;"></div>
+        <div class="feed-text"><b>Ana</b> pagou M$ 50 para Carlos</div>
+        <div class="feed-time">2 min</div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-dot" style="background:#6366f1;"></div>
+        <div class="feed-text"><b>Pedro</b> passou na Largada (+M$ 200)</div>
+        <div class="feed-time">5 min</div>
+      </div>
+      <span class="annotation">Feed em tempo real — todos os eventos via socket</span>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div class="bottom-nav">
+      <span class="component-tag" style="position:absolute;top:-14px;left:8px;">BottomNav (Bancário)</span>
+      <div class="nav-item active">
+        <span class="nav-icon">👥</span>
+        Jogadores
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">✅</span>
+        Aprovações
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">📊</span>
+        Painel
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, RefreshCw, X, Loader2, LogOut } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
-import CardMachine from './CardMachine.jsx';
+import DragDropMachine from './features/DragDropMachine.jsx';
 import ApprovalModal from './ApprovalModal.jsx';
 import AppHeader from './ui/AppHeader.jsx';
 import BottomNav from './ui/BottomNav.jsx';
@@ -13,6 +13,9 @@ import { QuickActionButton } from './ui/QuickActionButton.jsx';
 import { StatCard } from './ui/StatCard.jsx';
 import { ActivityFeed } from './features/ActivityFeed.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
+import PropertyCard from './PropertyCard.jsx';
+import { propertiesData } from '../data/properties.js';
+import RankingList from './RankingList.jsx';
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
@@ -23,18 +26,16 @@ export default function BankerDashboard() {
     approveTransfer, rejectTransfer, passGo, startAuction, assignProperty
   } = useGame();
 
-  const [tab, setTab] = useState('players');
+  const [tab, setTab] = useState('ranking');
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confReset, setConfReset] = useState(false);
   const [confClose, setConfClose] = useState(false);
-  const [adj, setAdj] = useState(null);
-  const [adjAmt, setAdjAmt] = useState('');
-  const [adjRsn, setAdjRsn] = useState('');
   const [cardPlayer, setCardPlayer] = useState(null);
   const [approvalReq, setApprovalReq] = useState(null);
   const [passGoPlayer, setPassGoPlayer] = useState(null); // null = closed, 'picking' = open picker
   const [finePlayer, setFinePlayer] = useState(null); // null = closed, 'picking' = open picker
+  const [filterGroup, setFilterGroup] = useState('Todos');
 
   const pending = pendingTransfers ?? [];
   const players = (gameState?.players ?? []).filter((p) => !p.isBanker);
@@ -45,28 +46,6 @@ export default function BankerDashboard() {
     try { await navigator.clipboard.writeText(roomCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     catch { addToast('Não foi possível copiar', 'warning'); }
   };
-
-  const openAdj = useCallback((p, mode) => {
-    if (mode === 'debit') { setCardPlayer(p); return; }
-    setAdj({ id: p.id, name: p.name, mode });
-    setAdjAmt(''); setAdjRsn('');
-  }, []);
-
-  const cancelAdj = useCallback(() => { setAdj(null); setAdjAmt(''); setAdjRsn(''); }, []);
-
-  const submitAdj = useCallback(async (e) => {
-    e.preventDefault();
-    const amt = parseInt(adjAmt, 10);
-    if (!amt || amt <= 0) return addToast('Insere um valor válido', 'error');
-    if (amt > 1_000_000_000) return addToast('Valor demasiado alto', 'error');
-    setBusy(true);
-    try {
-      await adjustBalance(adj.id, adj.mode === 'debit' ? -amt : amt, adjRsn.trim() || undefined);
-      addToast(adj.mode === 'credit' ? `✅ ${fmt(amt)} creditado a ${adj.name}` : `✅ ${fmt(amt)} debitado de ${adj.name}`, 'success');
-      cancelAdj();
-    } catch (e) { addToast(e.message, 'error'); }
-    finally { setBusy(false); }
-  }, [adj, adjAmt, adjRsn, adjustBalance, addToast, cancelAdj]);
 
   const doReset = async () => { setBusy(true); try { await resetBalances(); setConfReset(false); } catch (e) { addToast(e.message, 'error'); } finally { setBusy(false); } };
   const doClose = async () => { try { await closeRoom(); } catch (e) { addToast(e.message, 'error'); } };
@@ -147,13 +126,14 @@ export default function BankerDashboard() {
         </div>
 
         {/* Main Content Area */}
-        <section className="card flex flex-col h-[500px] p-6 mt-2">
+        <section className="card flex flex-col flex-1 min-h-[600px] p-4 sm:p-6 mt-2 mb-16 md:mb-0">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div className="w-full sm:w-auto overflow-x-auto hide-scrollbar">
               <SegmentedControl
                 options={[
-                  { value: 'players', label: 'Jogadores' },
-                  { value: 'machine', label: `Aprovações (${pending.length})` },
+                  { value: 'ranking', label: 'Ranking' },
+                  { value: 'machine', label: 'Maquininha' },
+                  { value: 'approvals', label: `Aprovações (${pending.length})` },
                   { value: 'history', label: 'Extrato' },
                   { value: 'properties', label: 'Imóveis' }
                 ]}
@@ -191,32 +171,27 @@ export default function BankerDashboard() {
 
           <div className="flex-1 overflow-y-auto hide-scrollbar relative">
             <AnimatePresence mode="wait">
-              {tab === 'players' && (
-                <motion.div key="players" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pb-4">
-                  {players.length === 0 ? (
-                    <div className="text-center py-20 flex flex-col items-center justify-center opacity-60">
-                      <span className="text-5xl mb-4">👥</span>
-                      <p className="font-bold text-lg">Nenhum jogador na sala.</p>
-                      <p className="text-sm">Compartilhe o código da sala acima.</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-4">
-                      {[...players].sort((a, b) => b.balance - a.balance).map((p, i) => (
-                        <PlayerRow
-                          key={p.id} p={p} rank={i + 1}
-                          expanded={adj?.id === p.id} mode={adj?.id === p.id ? adj.mode : null}
-                          amt={adjAmt} rsn={adjRsn} onAmt={setAdjAmt} onRsn={setAdjRsn}
-                          onCredit={() => openAdj(p, 'credit')} onDebit={() => openAdj(p, 'debit')}
-                          onCancel={cancelAdj} onSubmit={submitAdj} busy={busy}
-                        />
-                      ))}
-                    </div>
-                  )}
+              {tab === 'ranking' && (
+                <motion.div key="ranking" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pb-4">
+                  <RankingList players={gameState?.players || []} myId={currentPlayer?.id} />
                 </motion.div>
               )}
 
               {tab === 'machine' && (
-                <motion.div key="machine" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <motion.div key="machine" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="h-full">
+                  <DragDropMachine 
+                    players={players} 
+                    onTransaction={async ({ playerId, amount, type, reason }) => {
+                       const target = players.find(p => p.id === playerId);
+                       await adjustBalance(playerId, type === 'debit' ? -amount : amount, reason);
+                       addToast(`✅ ${fmt(amount)} ${type === 'debit' ? 'cobrado de' : 'creditado a'} ${target?.name || 'jogador'}`, 'success');
+                    }}
+                  />
+                </motion.div>
+              )}
+
+              {tab === 'approvals' && (
+                <motion.div key="approvals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                   {pending.length === 0 ? (
                     <div className="text-center py-20 flex flex-col items-center justify-center opacity-60">
                       <span className="text-5xl mb-4">💳</span>
@@ -261,10 +236,41 @@ export default function BankerDashboard() {
               )}
 
               {tab === 'properties' && (
-                <motion.div key="properties" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center h-full opacity-60">
-                  <span className="text-5xl mb-4">🏠</span>
-                  <p className="font-bold text-lg">Gestão de Imóveis (Em Breve)</p>
-                  <p className="text-sm mt-1 text-center max-w-md">O banco poderá atribuir, remover e leiloar propriedades diretamente nesta aba.</p>
+                <motion.div key="properties" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="pb-4 h-full flex flex-col">
+                  {/* Filtro de Cores */}
+                  <div className="flex overflow-x-auto hide-scrollbar gap-2 px-2 py-4 mb-2">
+                    <button 
+                      onClick={() => setFilterGroup('Todos')}
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${filterGroup === 'Todos' ? 'bg-primary text-on-primary' : 'bg-surface-container border border-outline-variant text-on-surface-variant'}`}
+                    >
+                      Todos
+                    </button>
+                    {[...new Set(propertiesData.map(p => p.group))].map(group => (
+                      <button 
+                        key={group}
+                        onClick={() => setFilterGroup(group)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${filterGroup === group ? 'bg-primary text-on-primary' : 'bg-surface-container border border-outline-variant text-on-surface-variant'}`}
+                      >
+                        {group}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap gap-6 justify-center items-start p-2 pb-10 flex-1 overflow-y-auto">
+                    {propertiesData
+                      .filter(prop => filterGroup === 'Todos' || prop.group === filterGroup)
+                      .map((prop) => {
+                        // Find if any player owns this property
+                        const ownerPlayer = (gameState?.players || []).find(p => p.properties && p.properties.includes(prop.name));
+                        return (
+                          <PropertyCard 
+                            key={prop.name} 
+                            {...prop} 
+                            owner={ownerPlayer ? { name: ownerPlayer.name, avatar: ownerPlayer.avatar, color: ownerPlayer.color } : null}
+                          />
+                        );
+                      })}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -275,22 +281,12 @@ export default function BankerDashboard() {
 
       {/* Keep bottom nav for mobile consistency, or could hide it. Let's hide it for banker if they prefer tabs. Actually, leave it for now. */}
       <BottomNav
-        activeTab={tab === 'players' ? 'ledger' : tab === 'machine' ? 'ranking' : 'banker'}
-        onTabChange={(t) => setTab(t === 'ledger' ? 'players' : t === 'ranking' ? 'machine' : 'history')}
+        activeTab={tab === 'players' ? 'ledger' : tab === 'approvals' ? 'ranking' : 'banker'}
+        onTabChange={(t) => setTab(t === 'ledger' ? 'players' : t === 'ranking' ? 'approvals' : 'history')}
         showBanker
       />
 
-      {cardPlayer && (
-        <CardMachine
-          player={cardPlayer}
-          onConfirm={async (amt, rsn) => {
-            await adjustBalance(cardPlayer.id, -amt, rsn);
-            addToast(`✅ ${fmt(amt)} cobrado de ${cardPlayer.name}`, 'success');
-            setCardPlayer(null);
-          }}
-          onCancel={() => setCardPlayer(null)}
-        />
-      )}
+
       {/* Pass Go Player Picker */}
       <AnimatePresence>
         {passGoPlayer === 'picking' && (
@@ -398,6 +394,11 @@ export default function BankerDashboard() {
       {approvalReq && (
         <ApprovalModal
           req={approvalReq}
+          isBankTransaction={
+            !approvalReq.toId || 
+            approvalReq.toId === 'bank' || 
+            gameState?.players?.find(p => p.id === approvalReq.toId)?.isBanker === true
+          }
           onApprove={async (requestId) => { await approveTransfer(requestId); setApprovalReq(null); }}
           onReject={async (requestId) => { await rejectTransfer(requestId); setApprovalReq(null); }}
           onClose={() => setApprovalReq(null)}
@@ -407,55 +408,4 @@ export default function BankerDashboard() {
   );
 }
 
-function PlayerRow({ p, rank, expanded, mode, amt, rsn, onAmt, onRsn, onCredit, onDebit, onCancel, onSubmit, busy }) {
-  return (
-    <motion.div
-      layout
-      className={`
-        card rounded-xl p-4 flex flex-col md:flex-row items-center gap-4 md:gap-6 transition-all shadow-sm
-        ${expanded ? 'border-primary bg-surface' : 'hover:shadow-md border-outline-variant bg-surface'}
-      `}
-    >
-      <div className="flex items-center gap-4 w-full md:w-1/3">
-        <div className="flex items-center justify-center">
-          <PinDisplay avatar={p.avatar} color={p.color} size={40} />
-        </div>
-        <div>
-          <h4 className="font-headline text-base font-bold text-on-surface leading-tight">{p.name}</h4>
-          <p className="font-label text-xs text-on-surface-variant uppercase tracking-wider mt-0.5">Player {rank}</p>
-        </div>
-      </div>
 
-      <div className="w-full md:w-1/4 flex flex-col items-start md:items-center">
-        <span className="font-headline text-2xl font-bold text-on-surface balance-text">
-          {fmt(p.balance)}
-        </span>
-      </div>
-
-      {expanded ? (
-        <form onSubmit={onSubmit} className="flex flex-col gap-2 w-full md:flex-grow">
-          <div className={`text-xs font-bold mb-1 uppercase tracking-wider ${mode === 'credit' ? 'text-success' : 'text-error'}`}>
-            {mode === 'credit' ? '↗ Pagar a ' : '↘ Cobrar de '}{p.name}
-          </div>
-          <input type="number" value={amt} onChange={(e) => onAmt(e.target.value)} placeholder="Valor (M$)" min="1" max="1000000000" autoFocus required className="field text-sm py-2" />
-          <input type="text" value={rsn} onChange={(e) => onRsn(e.target.value)} placeholder="Motivo (Opcional)" maxLength={50} className="field text-sm py-2" />
-          <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={busy} className={`flex-1 py-2 rounded-lg text-sm font-bold border-none cursor-pointer flex items-center justify-center gap-1.5 transition-all ${mode === 'credit' ? 'bg-success text-white' : 'bg-error text-white'}`} style={{ opacity: busy ? 0.5 : 1 }}>
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '✓ Confirmar'}
-            </button>
-            <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm border border-outline-variant bg-surface text-on-surface-variant cursor-pointer hover:bg-surface-container transition-all">✕</button>
-          </div>
-        </form>
-      ) : (
-        <div className="flex items-center gap-2 w-full md:flex-grow md:justify-end">
-          <button onClick={onDebit} className="flex-1 md:flex-none md:w-28 py-2 rounded-lg bg-error/10 text-error hover:bg-error/20 font-bold text-sm transition-all border border-transparent flex items-center justify-center gap-1">
-            <span className="text-lg leading-none">−</span> Cobrar
-          </button>
-          <button onClick={onCredit} className="flex-1 md:flex-none md:w-28 py-2 rounded-lg bg-success/10 text-success hover:bg-success/20 font-bold text-sm transition-all border border-transparent flex items-center justify-center gap-1">
-            <span className="text-lg leading-none">+</span> Pagar
-          </button>
-        </div>
-      )}
-    </motion.div>
-  );
-}

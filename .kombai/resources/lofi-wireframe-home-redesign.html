@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe: Home Screen Redesign — Prestige Ledger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Comic Sans MS', 'Marker Felt', cursive;
+      background: #f5f5f5;
+      color: #333;
+      padding: 16px;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; color: #333; }
+    .subtitle { font-size: 12px; text-align: center; color: #999; margin-bottom: 24px; }
+    .badge-reuse {
+      position: absolute; top: -6px; right: -6px;
+      background: #4CAF50; color: white;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial, sans-serif;
+      font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .badge-new {
+      position: absolute; top: -6px; right: -6px;
+      background: #FF9800; color: white;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial, sans-serif;
+      font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .wireframe-container {
+      background: white;
+      border: 2px solid #333;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 3px 3px 0 #ccc;
+    }
+    .component-wrapper { position: relative; }
+    .annotation {
+      font-family: Arial, sans-serif;
+      font-size: 10px; color: #999; font-style: italic;
+      padding: 4px 16px;
+    }
+
+    /* Hero section */
+    .hero {
+      text-align: center;
+      padding: 32px 24px 20px;
+      border-bottom: 1.5px dashed #ccc;
+      position: relative;
+      background: repeating-linear-gradient(
+        45deg, transparent, transparent 10px,
+        #fafafa 10px, #fafafa 20px
+      );
+    }
+    .hero-icon {
+      width: 80px; height: 80px;
+      border-radius: 24px;
+      border: 3px solid #333;
+      background: #e0e0e0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 40px; margin: 0 auto 12px;
+      box-shadow: 4px 4px 0 #ccc;
+    }
+    .hero-title {
+      font-size: 28px; font-weight: bold; letter-spacing: -1px;
+      margin-bottom: 4px;
+    }
+    .hero-subtitle {
+      font-size: 11px; color: #999;
+      text-transform: uppercase; letter-spacing: 3px;
+    }
+    .hero-particles {
+      position: absolute; top: 8px; left: 8px; right: 8px;
+      font-size: 10px; color: #ccc; text-align: center;
+    }
+
+    /* Tabs */
+    .tabs-3 {
+      display: flex;
+      border-bottom: 1.5px dashed #ccc;
+    }
+    .tab-3 {
+      flex: 1; padding: 12px 8px; text-align: center;
+      font-size: 11px; font-weight: bold; cursor: pointer;
+      border-bottom: 2px solid transparent; color: #999;
+    }
+    .tab-3.active { color: #333; border-bottom-color: #333; background: #f5f5f5; }
+
+    /* Form section */
+    .form-section { padding: 16px 20px; }
+    .field-group { margin-bottom: 16px; }
+    .field-label {
+      font-size: 10px; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 1.5px;
+      color: #999; margin-bottom: 6px;
+    }
+    .field-input {
+      width: 100%; padding: 14px 16px;
+      border: 2px solid #ccc; border-radius: 14px;
+      background: #fafafa; font-size: 14px;
+      font-family: inherit; color: #666;
+    }
+    .field-input.big {
+      text-align: center; font-size: 28px;
+      font-weight: bold; letter-spacing: 8px;
+      padding: 16px;
+    }
+
+    /* Pin picker - new bigger style */
+    .pin-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .pin-item {
+      aspect-ratio: 1;
+      border: 2px solid #ccc; border-radius: 16px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 4px; cursor: pointer; background: #fafafa;
+      position: relative;
+    }
+    .pin-item.selected {
+      border-color: #333; border-width: 3px;
+      background: #e8e8e8;
+      box-shadow: 2px 2px 0 #ccc;
+    }
+    .pin-icon { font-size: 24px; }
+    .pin-label { font-size: 8px; color: #999; text-transform: uppercase; }
+    .pin-ring {
+      position: absolute; inset: -4px;
+      border: 2px dashed #999; border-radius: 20px;
+    }
+
+    /* Game mode badges */
+    .mode-row {
+      display: flex; gap: 8px; margin-bottom: 16px;
+    }
+    .mode-badge {
+      flex: 1; padding: 10px 8px;
+      border: 2px solid #ccc; border-radius: 12px;
+      text-align: center; cursor: pointer;
+      background: #fafafa;
+    }
+    .mode-badge.selected {
+      border-color: #333; background: #e8e8e8;
+      box-shadow: 2px 2px 0 #ccc;
+    }
+    .mode-emoji { font-size: 20px; display: block; margin-bottom: 4px; }
+    .mode-name { font-size: 10px; font-weight: bold; }
+    .mode-desc { font-size: 8px; color: #999; }
+
+    /* Preset amounts */
+    .preset-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; margin-bottom: 12px;
+    }
+    .preset-btn {
+      padding: 12px 8px;
+      border: 2px solid #ccc; border-radius: 12px;
+      text-align: center; cursor: pointer; background: #fafafa;
+    }
+    .preset-btn.selected {
+      border-color: #333; background: #333; color: white;
+      box-shadow: 2px 2px 0 #999;
+    }
+    .preset-value { font-size: 14px; font-weight: bold; }
+    .preset-label { font-size: 8px; color: inherit; opacity: 0.7; }
+
+    /* CTA button */
+    .cta-btn {
+      width: 100%; padding: 16px;
+      border: 3px solid #333; border-radius: 50px;
+      background: #333; color: white;
+      font-size: 15px; font-weight: bold;
+      font-family: inherit; cursor: pointer;
+      text-align: center;
+      box-shadow: 4px 4px 0 #999;
+      margin-top: 8px;
+    }
+
+    /* Recent rooms */
+    .recent-section { padding: 16px 20px; border-top: 1.5px dashed #ccc; }
+    .recent-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px; margin-bottom: 8px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: #fafafa;
+    }
+    .recent-left { display: flex; align-items: center; gap: 10px; }
+    .recent-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1.5px solid #ccc; background: #e8e8e8;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .recent-info {}
+    .recent-code { font-size: 12px; font-weight: bold; letter-spacing: 2px; }
+    .recent-meta { font-size: 9px; color: #999; }
+    .recent-btn {
+      padding: 6px 14px; border: 1.5px solid #333;
+      border-radius: 8px; font-size: 10px; font-weight: bold;
+      background: white; cursor: pointer;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 12px 16px;
+      font-size: 10px; color: #ccc;
+      border-top: 1.5px dashed #ccc;
+    }
+
+    .custom-input-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 8px;
+    }
+    .custom-check {
+      width: 20px; height: 20px;
+      border: 2px solid #ccc; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; cursor: pointer;
+    }
+
+    .notes-section {
+      margin-top: 24px; padding: 16px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: white; font-family: Arial, sans-serif;
+    }
+    .notes-section h2 { font-size: 14px; margin-bottom: 12px; font-family: Arial, sans-serif; }
+    .notes-section ul { padding-left: 16px; font-size: 11px; color: #666; line-height: 1.8; }
+    .notes-section li { margin-bottom: 2px; }
+    .notes-section strong { color: #333; }
+  </style>
+</head>
+<body>
+
+<h1>🏠 Tela Inicial — Redesign Wireframe</h1>
+<p class="subtitle">Bold & Playful • Game-Inspired • 100% PT-BR</p>
+
+<div class="wireframe-container">
+
+  <!-- HERO -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: AnimatedHero component">[NEW] AnimatedHero</span>
+    <div class="hero">
+      <div class="hero-particles">✦ ✧ ✦ ✧ (partículas animadas no fundo) ✧ ✦ ✧ ✦</div>
+      <div class="hero-icon">🏦</div>
+      <div class="hero-title">Prestige Ledger</div>
+      <div class="hero-subtitle">Banco Imobiliário Digital</div>
+      <div class="annotation" style="margin-top:8px">↕ Logo com bounce + brilho gradiente pulsante</div>
+    </div>
+  </div>
+
+  <!-- 3-TAB SEGMENTED CONTROL -->
+  <!-- REUSABLE: SegmentedControl from src/components/ui/SegmentedControl.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/SegmentedControl.jsx">[REUSE] SegmentedControl</span>
+    <div class="tabs-3">
+      <div class="tab-3 active">🎲 Entrar</div>
+      <div class="tab-3">🏗️ Criar Sala</div>
+      <div class="tab-3">🕐 Recentes</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: ENTRAR (JOIN) ============ -->
+  <div class="form-section">
+
+    <!-- Room Code -->
+    <div class="field-group">
+      <div class="field-label">Código da Sala</div>
+      <div class="field-input big">A B C 1 2 3</div>
+      <div class="annotation">Input com estilo "dado" — bordas arredondadas, sombra 3D</div>
+    </div>
+
+    <!-- Player Name -->
+    <div class="field-group">
+      <div class="field-label">Teu Nome</div>
+      <div class="field-input">Ex: Maria</div>
+    </div>
+
+    <!-- Pin Picker (redesigned - bigger with labels) -->
+    <!-- REUSABLE: PinIcon from src/components/PinIcon.jsx -->
+    <div class="component-wrapper">
+      <span class="badge-reuse" title="src/components/PinIcon.jsx">[REUSE] PinIcon</span>
+      <div class="field-group">
+        <div class="field-label">Escolhe o Teu Pino</div>
+        <div class="pin-grid">
+          <div class="pin-item selected">
+            <div class="pin-ring"></div>
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Verm.</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Azul</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Verde</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Amar.</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Laran.</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Roxo</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">📍</div>
+            <div class="pin-label">Rosa</div>
+          </div>
+          <div class="pin-item">
+            <div class="pin-icon">✏️</div>
+            <div class="pin-label">Custom</div>
+          </div>
+        </div>
+        <div class="annotation">Pinos maiores com label de cor + ring animado na seleção</div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-btn">🎲 ENTRAR NA SALA</div>
+    <div class="annotation">Botão com gradiente vibrante + efeito shine animado</div>
+  </div>
+
+  <!-- ============ TAB: CRIAR SALA (hidden, shown when active) ============ -->
+  <div style="border-top: 1.5px dashed #ccc; padding: 16px 20px;">
+    <div class="annotation" style="padding:0; margin-bottom:12px">— Conteúdo da aba "Criar Sala" —</div>
+
+    <div class="field-group">
+      <div class="field-label">Teu Nome (Bancário)</div>
+      <div class="field-input">Ex: Pedro</div>
+    </div>
+
+    <!-- Game Mode Selector (NEW) -->
+    <div class="component-wrapper">
+      <span class="badge-new" title="New: GameModeSelector">[NEW] GameModeSelector</span>
+      <div class="field-group">
+        <div class="field-label">Modo de Jogo</div>
+        <div class="mode-row">
+          <div class="mode-badge selected">
+            <span class="mode-emoji">⚡</span>
+            <div class="mode-name">Rápido</div>
+            <div class="mode-desc">M$ 1.500</div>
+          </div>
+          <div class="mode-badge">
+            <span class="mode-emoji">🎩</span>
+            <div class="mode-name">Clássico</div>
+            <div class="mode-desc">M$ 2.000</div>
+          </div>
+          <div class="mode-badge">
+            <span class="mode-emoji">💎</span>
+            <div class="mode-name">Luxo</div>
+            <div class="mode-desc">M$ 3.000</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom amount -->
+    <div class="custom-input-row">
+      <div class="custom-check">✓</div>
+      <span style="font-size:11px; font-weight:bold">Outro valor:</span>
+      <div class="field-input" style="flex:1; padding:8px 12px; font-size:13px">Ex: 2500</div>
+    </div>
+
+    <div class="cta-btn" style="margin-top:16px">🏦 CRIAR SALA</div>
+  </div>
+
+  <!-- ============ TAB: RECENTES (NEW) ============ -->
+  <!-- NEW COMPONENT: RecentRooms -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: RecentRooms component">[NEW] RecentRooms</span>
+    <div class="recent-section">
+      <div class="annotation" style="padding:0; margin-bottom:12px">— Conteúdo da aba "Recentes" —</div>
+      <div class="recent-item">
+        <div class="recent-left">
+          <div class="recent-avatar">🎩</div>
+          <div class="recent-info">
+            <div class="recent-code">XK9 M2P</div>
+            <div class="recent-meta">Pedro (Bancário) • 3 jogadores • há 2h</div>
+          </div>
+        </div>
+        <div class="recent-btn">Entrar</div>
+      </div>
+      <div class="recent-item">
+        <div class="recent-left">
+          <div class="recent-avatar">💰</div>
+          <div class="recent-info">
+            <div class="recent-code">AB3 F7Y</div>
+            <div class="recent-meta">Ana (Bancário) • 5 jogadores • ontem</div>
+          </div>
+        </div>
+        <div class="recent-btn">Entrar</div>
+      </div>
+      <div class="annotation">Salas recentes salvas no localStorage para reconexão rápida</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Abre em vários dispositivos para jogar em tempo real 📱💻
+  </div>
+
+</div>
+
+<!-- Notes -->
+<div class="notes-section">
+  <h2>📝 Notas do Redesign — Home</h2>
+  <ul>
+    <li><strong>Hero animado</strong> — Logo com bounce, partículas flutuantes, gradiente pulsante no fundo</li>
+    <li><strong>3 abas</strong> — Entrar / Criar / Recentes (nova aba para reconexão rápida)</li>
+    <li><strong>Pinos maiores</strong> — Grid com labels de cor, ring animado na seleção, melhor acessibilidade (aria-labels)</li>
+    <li><strong>Modos de jogo</strong> — Cards visuais substituem preset simples (Rápido/Clássico/Luxo)</li>
+    <li><strong>Salas recentes</strong> — localStorage para rejoin rápido sem digitar código</li>
+    <li><strong>100% PT-BR</strong> — Todos os textos em português</li>
+    <li><strong>Botão CTA</strong> — Gradiente vibrante com efeito shine sweep e sombra 3D</li>
+    <li><strong>Checkbox acessível</strong> — "Outro valor" usa role="checkbox" + aria-checked</li>
+  </ul>
+
+  <p style="margin-top:12px"><strong>Componentes Reutilizados:</strong> SegmentedControl, PinIcon/PinSVG</p>
+  <p><strong>Novos Componentes:</strong> AnimatedHero, GameModeSelector, RecentRooms</p>
+</div>
+
+</body>
+</html>

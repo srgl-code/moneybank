@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe: Player Dashboard Redesign — Prestige Ledger</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Comic Sans MS', 'Marker Felt', cursive;
+      background: #f5f5f5; color: #333;
+      padding: 16px; max-width: 420px; margin: 0 auto;
+    }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; text-align: center; color: #999; margin-bottom: 24px; }
+    .badge-reuse {
+      position: absolute; top: -6px; right: -6px;
+      background: #4CAF50; color: white; padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial; font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .badge-new {
+      position: absolute; top: -6px; right: -6px;
+      background: #FF9800; color: white; padding: 1px 5px; border-radius: 3px;
+      font-size: 9px; font-family: Arial; font-weight: bold; z-index: 10; white-space: nowrap;
+    }
+    .wireframe-container {
+      background: white; border: 2px solid #333;
+      border-radius: 20px; overflow: hidden; box-shadow: 3px 3px 0 #ccc;
+    }
+    .component-wrapper { position: relative; }
+    .annotation {
+      font-family: Arial; font-size: 10px; color: #999;
+      font-style: italic; padding: 4px 16px;
+    }
+
+    /* Header */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1.5px dashed #ccc;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 2px solid #333; background: #e8e8e8;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header-name { font-size: 13px; font-weight: bold; }
+    .header-room { font-size: 9px; color: #999; letter-spacing: 2px; }
+    .header-actions { display: flex; gap: 6px; }
+    .header-btn {
+      width: 32px; height: 32px; border: 1.5px solid #ccc;
+      border-radius: 10px; background: #fafafa;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; cursor: pointer; position: relative;
+    }
+    .notif-dot {
+      position: absolute; top: -2px; right: -2px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #333; border: 2px solid white;
+    }
+
+    /* Balance card */
+    .balance-card {
+      margin: 16px; padding: 24px;
+      border: 2px solid #333; border-radius: 20px;
+      text-align: center; position: relative;
+      background: repeating-linear-gradient(
+        135deg, #fafafa, #fafafa 8px, #f0f0f0 8px, #f0f0f0 16px
+      );
+      box-shadow: 3px 3px 0 #ccc;
+    }
+    .balance-label { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 2px; }
+    .balance-value { font-size: 40px; font-weight: bold; margin: 8px 0; }
+    .balance-change {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 14px; border: 1.5px solid #ccc;
+      border-radius: 20px; font-size: 11px; color: #666;
+    }
+
+    /* Sparkline chart */
+    .sparkline-area {
+      margin: 0 16px; padding: 16px;
+      border: 1.5px solid #ccc; border-radius: 14px;
+      background: #fafafa; position: relative;
+    }
+    .sparkline-header {
+      display: flex; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .sparkline-title { font-size: 10px; font-weight: bold; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+    .sparkline-period { font-size: 9px; color: #999; }
+    .sparkline-chart {
+      height: 60px; border-bottom: 1px solid #e0e0e0;
+      position: relative; display: flex; align-items: flex-end;
+    }
+    .sparkline-bar {
+      flex: 1; margin: 0 2px; border-radius: 3px 3px 0 0;
+      background: #ccc; min-height: 4px;
+    }
+    .sparkline-bar.up { background: #999; }
+    .sparkline-bar.down { background: #ddd; }
+
+    /* Quick actions */
+    .quick-actions {
+      display: flex; gap: 10px; padding: 16px;
+    }
+    .quick-action {
+      flex: 1; padding: 14px 8px;
+      border: 2px solid #ccc; border-radius: 16px;
+      text-align: center; cursor: pointer; background: #fafafa;
+    }
+    .quick-action:first-child {
+      border-color: #333; background: #333; color: white;
+      box-shadow: 3px 3px 0 #999;
+    }
+    .qa-icon { font-size: 22px; display: block; margin-bottom: 4px; }
+    .qa-label { font-size: 10px; font-weight: bold; }
+
+    /* Properties section */
+    .properties {
+      padding: 0 16px 16px; position: relative;
+    }
+    .section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    .section-title { font-size: 13px; font-weight: bold; }
+    .section-action { font-size: 10px; color: #666; text-decoration: underline; cursor: pointer; }
+    .prop-scroll {
+      display: flex; gap: 10px; overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .prop-card {
+      flex-shrink: 0; width: 120px; padding: 12px;
+      border: 1.5px solid #ccc; border-radius: 14px;
+      background: #fafafa; position: relative;
+    }
+    .prop-color {
+      width: 100%; height: 6px; border-radius: 3px;
+      background: #ccc; margin-bottom: 8px;
+    }
+    .prop-name { font-size: 11px; font-weight: bold; }
+    .prop-value { font-size: 10px; color: #999; }
+    .prop-rent { font-size: 9px; color: #666; margin-top: 4px; }
+    .prop-empty {
+      flex-shrink: 0; width: 120px; padding: 24px 12px;
+      border: 2px dashed #ccc; border-radius: 14px;
+      text-align: center; color: #ccc; font-size: 11px;
+    }
+
+    /* Content tabs */
+    .content-tabs {
+      display: flex; border-bottom: 1.5px dashed #ccc;
+      border-top: 1.5px dashed #ccc;
+    }
+    .c-tab {
+      flex: 1; padding: 10px 6px; text-align: center;
+      font-size: 10px; font-weight: bold; cursor: pointer;
+      border-bottom: 2px solid transparent; color: #999;
+    }
+    .c-tab.active { color: #333; border-bottom-color: #333; }
+    .c-tab-count {
+      display: inline-block; background: #333; color: white;
+      font-size: 8px; padding: 1px 5px; border-radius: 8px; margin-left: 3px;
+    }
+
+    /* Transaction list */
+    .tx-list { padding: 12px 16px; }
+    .tx-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid #eee;
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-left { display: flex; align-items: center; gap: 10px; }
+    .tx-icon {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 1.5px solid #ccc; background: #f5f5f5;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .tx-desc { font-size: 11px; font-weight: bold; }
+    .tx-time { font-size: 9px; color: #999; }
+    .tx-amount { font-size: 12px; font-weight: bold; }
+    .tx-credit { color: #333; }
+    .tx-debit { color: #999; }
+
+    /* Notification panel (inline preview) */
+    .notif-panel {
+      margin: 0 16px 16px; padding: 12px;
+      border: 1.5px solid #ccc; border-radius: 14px;
+      background: #fafafa;
+    }
+    .notif-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-icon { font-size: 16px; }
+    .notif-text { font-size: 10px; color: #333; flex: 1; }
+    .notif-time { font-size: 9px; color: #ccc; }
+    .notif-dot-new {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #333; flex-shrink: 0;
+    }
+
+    /* Pending banner */
+    .pending-banner {
+      margin: 0 16px; padding: 10px 14px;
+      border: 2px dashed #999; border-radius: 12px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; color: #666; margin-bottom: 12px;
+      background: #fafafa;
+    }
+
+    /* Bottom nav */
+    .bottom-nav {
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 8px 16px 20px; border-top: 1.5px dashed #ccc;
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      font-size: 9px; color: #999; cursor: pointer; padding: 4px 8px;
+    }
+    .nav-item.active {
+      color: #333; background: #e0e0e0;
+      border-radius: 14px; padding: 10px 18px;
+      box-shadow: 2px 2px 0 #ccc;
+    }
+    .nav-icon { font-size: 18px; }
+
+    /* Recipient row */
+    .recipients { padding: 0 16px; }
+    .recipient-row {
+      display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px;
+    }
+    .recipient {
+      flex-shrink: 0; width: 56px; text-align: center; cursor: pointer;
+    }
+    .recipient-avatar {
+      width: 46px; height: 46px; border-radius: 50%;
+      border: 2px solid #ccc; background: #f0f0f0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; margin: 0 auto 4px;
+    }
+    .recipient-name { font-size: 8px; color: #666; }
+
+    .transfer-cta {
+      margin: 12px 16px 16px; padding: 14px;
+      border: 2px solid #333; border-radius: 24px;
+      text-align: center; font-weight: bold; font-size: 13px;
+      background: #333; color: white; cursor: pointer;
+      box-shadow: 3px 3px 0 #999;
+    }
+
+    .notes-section {
+      margin-top: 24px; padding: 16px;
+      border: 1.5px solid #ccc; border-radius: 12px;
+      background: white; font-family: Arial;
+    }
+    .notes-section h2 { font-size: 14px; margin-bottom: 12px; font-family: Arial; }
+    .notes-section ul { padding-left: 16px; font-size: 11px; color: #666; line-height: 1.8; }
+    .notes-section strong { color: #333; }
+  </style>
+</head>
+<body>
+
+<h1>👤 Painel do Jogador — Redesign Wireframe</h1>
+<p class="subtitle">Bold & Playful • Propriedades + Stats + Notificações</p>
+
+<div class="wireframe-container">
+
+  <!-- HEADER with avatar, name, notifications -->
+  <!-- REUSABLE: AppHeader (modified) from src/components/ui/AppHeader.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/AppHeader.jsx">[REUSE] AppHeader</span>
+    <div class="header">
+      <div class="header-left">
+        <div class="header-avatar">📍</div>
+        <div>
+          <div class="header-name">Maria</div>
+          <div class="header-room">Sala: ABC123</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <!-- NEW: NotificationBell -->
+        <div class="component-wrapper" style="display:inline-block">
+          <span class="badge-new" style="top:-8px;right:-8px;font-size:8px" title="New: NotificationBell">[NEW] Bell</span>
+          <div class="header-btn">
+            🔔
+            <div class="notif-dot"></div>
+          </div>
+        </div>
+        <div class="header-btn">⎋</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BALANCE CARD -->
+  <!-- REUSABLE: AnimatedBalance from src/components/ui/AnimatedBalance.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/AnimatedBalance.jsx">[REUSE] AnimatedBalance</span>
+    <div class="balance-card">
+      <div class="balance-label">Patrimônio Total</div>
+      <div class="balance-value">M$ 15.400</div>
+      <div class="balance-change">
+        ▲ +M$ 3.400 desde o início
+      </div>
+    </div>
+  </div>
+
+  <!-- SPARKLINE CHART (NEW) -->
+  <!-- NEW COMPONENT: BalanceChart (mini sparkline) -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: BalanceChart sparkline">[NEW] BalanceChart</span>
+    <div class="sparkline-area">
+      <div class="sparkline-header">
+        <div class="sparkline-title">📈 Evolução do Saldo</div>
+        <div class="sparkline-period">Últimas 12 jogadas</div>
+      </div>
+      <div class="sparkline-chart">
+        <div class="sparkline-bar up" style="height:30%"></div>
+        <div class="sparkline-bar up" style="height:35%"></div>
+        <div class="sparkline-bar down" style="height:20%"></div>
+        <div class="sparkline-bar up" style="height:45%"></div>
+        <div class="sparkline-bar up" style="height:55%"></div>
+        <div class="sparkline-bar down" style="height:40%"></div>
+        <div class="sparkline-bar up" style="height:60%"></div>
+        <div class="sparkline-bar up" style="height:70%"></div>
+        <div class="sparkline-bar down" style="height:50%"></div>
+        <div class="sparkline-bar up" style="height:75%"></div>
+        <div class="sparkline-bar up" style="height:85%"></div>
+        <div class="sparkline-bar up" style="height:100%"></div>
+      </div>
+      <div class="annotation" style="padding:4px 0 0">Mini gráfico do saldo — cada barra = 1 transação</div>
+    </div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="quick-actions">
+    <div class="quick-action">
+      <span class="qa-icon">↗</span>
+      <span class="qa-label">Transferir</span>
+    </div>
+    <div class="quick-action">
+      <span class="qa-icon">🏠</span>
+      <span class="qa-label">Propriedades</span>
+    </div>
+    <div class="quick-action">
+      <span class="qa-icon">🏆</span>
+      <span class="qa-label">Ranking</span>
+    </div>
+  </div>
+
+  <!-- PENDING TRANSFERS BANNER -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: PendingBanner">[NEW] PendingBanner</span>
+    <div class="pending-banner">
+      <span>⏳</span>
+      <span>1 transferência pendente — aguardando o bancário</span>
+    </div>
+  </div>
+
+  <!-- RECIPIENTS ROW -->
+  <!-- REUSABLE: PinDisplay from src/components/PinIcon.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/PinIcon.jsx">[REUSE] PinDisplay</span>
+    <div class="recipients">
+      <div class="section-header" style="padding: 0 0 8px">
+        <span class="section-title">Transferir Para</span>
+      </div>
+      <div class="recipient-row">
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Pedro</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Ana</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">João</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Lucas</div>
+        </div>
+        <div class="recipient">
+          <div class="recipient-avatar">📍</div>
+          <div class="recipient-name">Carla</div>
+        </div>
+      </div>
+    </div>
+    <div class="transfer-cta">↗ TRANSFERIR FUNDOS</div>
+  </div>
+
+  <!-- PROPERTIES SECTION (NEW) -->
+  <!-- NEW COMPONENT: PropertyTracker -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: PropertyTracker">[NEW] PropertyTracker</span>
+    <div class="properties">
+      <div class="section-header">
+        <span class="section-title">🏠 Minhas Propriedades</span>
+        <span class="section-action">Ver todas (4) →</span>
+      </div>
+      <div class="prop-scroll">
+        <div class="prop-card">
+          <div class="prop-color" style="background:#999"></div>
+          <div class="prop-name">Av. Paulista</div>
+          <div class="prop-value">M$ 400</div>
+          <div class="prop-rent">Renda: M$ 50</div>
+        </div>
+        <div class="prop-card">
+          <div class="prop-color" style="background:#666"></div>
+          <div class="prop-name">Rua Augusta</div>
+          <div class="prop-value">M$ 260</div>
+          <div class="prop-rent">Renda: M$ 22</div>
+        </div>
+        <div class="prop-card">
+          <div class="prop-color" style="background:#bbb"></div>
+          <div class="prop-name">Copacabana</div>
+          <div class="prop-value">M$ 320</div>
+          <div class="prop-rent">Renda: M$ 28</div>
+        </div>
+        <div class="prop-empty">
+          + Comprar
+        </div>
+      </div>
+      <div class="annotation">Scroll horizontal de propriedades com cor de grupo</div>
+    </div>
+  </div>
+
+  <!-- CONTENT TABS -->
+  <div class="content-tabs">
+    <div class="c-tab active">📋 Extrato <span class="c-tab-count">8</span></div>
+    <div class="c-tab">🏆 Ranking</div>
+    <div class="c-tab">🔔 Alertas <span class="c-tab-count">3</span></div>
+  </div>
+
+  <!-- TRANSACTION LIST -->
+  <!-- REUSABLE: TransactionHistory from src/components/TransactionHistory.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/TransactionHistory.jsx">[REUSE] TransactionHistory</span>
+    <div class="tx-list">
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">🏠</div>
+          <div>
+            <div class="tx-desc">Aluguel Recebido</div>
+            <div class="tx-time">de Pedro • 14:32</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-credit">+M$ 50</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">📜</div>
+          <div>
+            <div class="tx-desc">Imposto de Luxo</div>
+            <div class="tx-time">do Banco • 14:15</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-debit">-M$ 75</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-left">
+          <div class="tx-icon">🎁</div>
+          <div>
+            <div class="tx-desc">Passou na Largada</div>
+            <div class="tx-time">do Banco • 13:50</div>
+          </div>
+        </div>
+        <div class="tx-amount tx-credit">+M$ 200</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATION PREVIEW (shown when Alertas tab active) -->
+  <!-- NEW COMPONENT: NotificationCenter -->
+  <div class="component-wrapper">
+    <span class="badge-new" title="New: NotificationCenter">[NEW] NotificationCenter</span>
+    <div style="border-top:1.5px dashed #ccc">
+      <div class="annotation" style="padding:12px 16px 4px">— Conteúdo da aba "Alertas" —</div>
+      <div class="notif-panel">
+        <div class="notif-item">
+          <div class="notif-dot-new"></div>
+          <span class="notif-icon">💰</span>
+          <span class="notif-text"><strong>Pedro</strong> transferiu M$ 200 para ti</span>
+          <span class="notif-time">agora</span>
+        </div>
+        <div class="notif-item">
+          <div class="notif-dot-new"></div>
+          <span class="notif-icon">🏠</span>
+          <span class="notif-text"><strong>Ana</strong> comprou Av. Paulista por M$ 400</span>
+          <span class="notif-time">2min</span>
+        </div>
+        <div class="notif-item">
+          <span class="notif-icon" style="margin-left:14px">🎲</span>
+          <span class="notif-text">Turno do <strong>João</strong> — é a tua vez a seguir</span>
+          <span class="notif-time">5min</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <!-- REUSABLE: BottomNav from src/components/ui/BottomNav.jsx -->
+  <div class="component-wrapper">
+    <span class="badge-reuse" title="src/components/ui/BottomNav.jsx">[REUSE] BottomNav</span>
+    <div class="bottom-nav">
+      <div class="nav-item active">
+        <span class="nav-icon">💰</span>
+        Carteira
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🏆</span>
+        Ranking
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🔔</span>
+        Alertas
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Notes -->
+<div class="notes-section">
+  <h2>📝 Notas do Redesign — Player Dashboard</h2>
+  <ul>
+    <li><strong>Header personalizado</strong> — Avatar do jogador + nome + sala + sino de notificações com badge</li>
+    <li><strong>Balance card</strong> — Fundo com gradiente vibrante e padrão geométrico, sombra 3D bold</li>
+    <li><strong>Sparkline chart</strong> — Mini gráfico de barras mostrando evolução do saldo (últimas N transações)</li>
+    <li><strong>Quick actions</strong> — 3 botões: Transferir (CTA principal), Propriedades, Ranking</li>
+    <li><strong>Property tracker</strong> — Scroll horizontal de propriedades com cor do grupo, nome, valor, renda</li>
+    <li><strong>3 abas de conteúdo</strong> — Extrato / Ranking / Alertas (substituem bottom nav para conteúdo)</li>
+    <li><strong>Centro de notificações</strong> — Feed de eventos em tempo real (transferências, compras, turnos)</li>
+    <li><strong>Banner pendente</strong> — Alerta visual quando há transferências aguardando aprovação</li>
+    <li><strong>100% PT-BR</strong> — "Patrimônio Total", "Transferir Fundos", "Minhas Propriedades"</li>
+  </ul>
+  <p style="margin-top:12px"><strong>Reutilizados (5):</strong> AppHeader, AnimatedBalance, PinDisplay, TransactionHistory, BottomNav</p>
+  <p><strong>Novos (5):</strong> NotificationBell, BalanceChart, PropertyTracker, PendingBanner, NotificationCenter</p>
+</div>
+
+</body>
+</html>

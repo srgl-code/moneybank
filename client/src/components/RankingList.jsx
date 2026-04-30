@@ -7,12 +7,10 @@ const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function RankingList({ players, myId }) {
-  // Sort: banker goes to end, rest sorted by balance
-  const sorted = [...players].sort((a, b) => {
-    if (a.isBanker) return 1;
-    if (b.isBanker) return -1;
-    return b.balance - a.balance;
-  });
+  // Sort: exclude bankers, sort by balance
+  const sorted = players
+    .filter(p => !p.isBanker)
+    .sort((a, b) => b.balance - a.balance);
 
   if (!sorted.length) {
     return (
@@ -29,8 +27,7 @@ export default function RankingList({ players, myId }) {
         <AnimatePresence>
           {sorted.map((p, i) => {
             const isMe = p.id === myId;
-            const isBk = p.isBanker;
-            const rank = isBk ? null : i + 1;
+            const rank = i + 1;
             const isFirst = rank === 1;
             const medal = rank && rank <= 3 ? MEDALS[rank - 1] : null;
 
@@ -68,8 +65,6 @@ export default function RankingList({ players, myId }) {
                 <div className="w-8 flex-shrink-0 flex justify-center">
                   {medal ? (
                     <span className="text-xl leading-none">{medal}</span>
-                  ) : isBk ? (
-                    <span className="text-base font-bold text-on-surface-variant opacity-40">—</span>
                   ) : (
                     <span className={`font-headline font-bold text-base ${isMe ? 'text-teal-600' : 'text-on-surface-variant'}`}>
                       {rank}
@@ -95,21 +90,17 @@ export default function RankingList({ players, myId }) {
                   <p className={`font-bold text-sm leading-tight truncate ${isFirst ? 'text-amber-900' : isMe ? 'text-teal-800' : 'text-on-surface'}`}>
                     {isMe ? `${p.name} (Você)` : p.name}
                   </p>
-                  <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${isBk ? 'text-amber-600' : isFirst ? 'text-amber-500' : isMe ? 'text-teal-500' : 'text-on-surface-variant opacity-60'}`}>
-                    {isBk ? 'Bancário' : isFirst ? '1º lugar' : isMe ? 'Você' : `${rank}º lugar`}
+                  <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${isFirst ? 'text-amber-500' : isMe ? 'text-teal-500' : 'text-on-surface-variant opacity-60'}`}>
+                    {isFirst ? '1º lugar' : isMe ? 'Você' : `${rank}º lugar`}
                   </p>
                 </div>
 
                 {/* Balance */}
-                <div className="flex-shrink-0 text-right">
-                  {isBk ? (
-                    <span className="text-xl font-bold text-amber-500 leading-none">∞</span>
-                  ) : (
+                  <div className="flex-shrink-0 text-right">
                     <span className={`font-headline font-black text-base tracking-tight ${isFirst ? 'text-amber-700' : isMe ? 'text-teal-700' : 'text-on-surface'}`}>
                       {fmt(p.balance)}
                     </span>
-                  )}
-                </div>
+                  </div>
               </motion.div>
             );
           })}

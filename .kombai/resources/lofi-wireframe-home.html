@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe — Tela Inicial (Home)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f5f5; color: #333; display: flex; justify-content: center; padding: 24px; }
+    .phone { width: 375px; min-height: 812px; background: #fff; border: 2px solid #999; border-radius: 24px; overflow: hidden; position: relative; }
+    .component-tag { font-size: 9px; background: #e0e0e0; color: #666; padding: 1px 5px; border-radius: 3px; font-family: monospace; display: inline-block; margin-bottom: 4px; }
+    .section { border: 1.5px dashed #bbb; margin: 8px; padding: 12px; border-radius: 8px; position: relative; }
+    .section-label { position: absolute; top: -8px; left: 8px; background: #fff; padding: 0 4px; font-size: 10px; color: #999; font-style: italic; }
+    h1 { font-size: 22px; font-weight: 800; }
+    h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555; }
+    .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+    .input { width: 100%; height: 44px; border: 1.5px solid #ccc; border-radius: 8px; background: #fafafa; padding: 0 12px; display: flex; align-items: center; color: #aaa; font-size: 14px; margin-bottom: 8px; }
+    .input.large { height: 56px; font-size: 24px; letter-spacing: 8px; text-align: center; font-weight: 700; color: #333; justify-content: center; }
+    .btn { width: 100%; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; cursor: pointer; border: none; }
+    .btn-primary { background: #555; color: #fff; }
+    .btn-secondary { background: #fff; border: 1.5px solid #ccc; color: #555; }
+    .pill-group { display: flex; gap: 0; background: #eee; border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+    .pill { flex: 1; text-align: center; padding: 8px 0; font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; color: #888; }
+    .pill.active { background: #fff; color: #333; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .pin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+    .pin { width: 48px; height: 48px; border: 1.5px solid #ccc; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #fafafa; justify-self: center; }
+    .pin.selected { border-color: #555; background: #eee; }
+    .badge-row { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
+    .badge { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1.5px solid #ccc; background: #fafafa; }
+    .badge.active { background: #555; color: #fff; border-color: #555; }
+    .room-card { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 6px; }
+    .room-avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .room-info { flex: 1; }
+    .room-info .name { font-size: 13px; font-weight: 600; }
+    .room-info .meta { font-size: 10px; color: #999; }
+    .room-rejoin { font-size: 11px; font-weight: 600; color: #555; padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .hero-area { text-align: center; padding: 32px 16px 16px; position: relative; }
+    .hero-emoji { font-size: 56px; display: block; margin-bottom: 8px; }
+    .particles { position: absolute; top: 0; left: 0; right: 0; bottom: 0; opacity: 0.15; }
+    .particle { position: absolute; font-size: 14px; }
+    .glow-text { font-size: 11px; color: #888; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+    .color-ring { width: 54px; height: 54px; border-radius: 50%; border: 3px solid #999; display: flex; align-items: center; justify-content: center; }
+    .annotation { font-size: 9px; color: #b55; background: #fef0f0; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: block; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="phone">
+
+    <!-- HERO -->
+    <div class="hero-area">
+      <div class="section" style="border:none; padding: 0;">
+        <span class="component-tag">AnimatedHero</span>
+        <div class="particles">
+          <span class="particle" style="top:10px;left:20px">💰</span>
+          <span class="particle" style="top:30px;right:30px">🎲</span>
+          <span class="particle" style="top:60px;left:50px">🏠</span>
+          <span class="particle" style="bottom:10px;right:50px">💎</span>
+        </div>
+        <span class="hero-emoji">🏦</span>
+        <h1>Prestige Ledger</h1>
+        <p class="subtitle">Banco Imobiliário Digital</p>
+        <p class="glow-text">▸ efeito glow gradiente ◂</p>
+      </div>
+    </div>
+
+    <!-- SEGMENTED CONTROL -->
+    <div style="padding: 0 16px;">
+      <span class="component-tag">SegmentedControl</span>
+      <div class="pill-group">
+        <div class="pill active">Entrar</div>
+        <div class="pill">Criar</div>
+        <div class="pill">Recentes</div>
+      </div>
+    </div>
+
+    <!-- TAB: ENTRAR (Join) -->
+    <div class="section" style="margin-top: 4px;">
+      <span class="section-label">Tab: Entrar na Sala</span>
+
+      <h3>Código da Sala</h3>
+      <span class="component-tag">DiceInput</span>
+      <div class="input large">A B 3 X 9 K</div>
+      <span class="annotation">Input estilo dado — cada dígito em caixa separada</span>
+
+      <div style="margin-top: 12px;">
+        <h3>Teu Nome</h3>
+        <div class="input">Insere o teu nome de jogador…</div>
+      </div>
+
+      <div style="margin-top: 12px;">
+        <h3>Escolhe o Teu Pino</h3>
+        <span class="component-tag">PinPicker (com anel de cor)</span>
+        <div class="pin-grid">
+          <div class="pin">🚗</div>
+          <div class="pin selected">🎩</div>
+          <div class="pin">🐕</div>
+          <div class="pin">👢</div>
+          <div class="pin">🚢</div>
+          <div class="pin">🔧</div>
+          <div class="pin">🛒</div>
+          <div class="pin">🎲</div>
+          <div class="pin" style="font-size:12px; color:#888;">✏️</div>
+        </div>
+        <span class="annotation">Pino selecionado mostra anel de cor ao redor + nome abaixo</span>
+        <div style="display:flex; align-items:center; gap:8px; margin-top: 8px; justify-content: center;">
+          <div class="color-ring"><span style="font-size:24px">🎩</span></div>
+          <div><div style="font-size:13px; font-weight:600;">Cartola</div><div style="font-size:10px; color:#888;">cor: azul</div></div>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <h3>Modo de Jogo</h3>
+        <span class="component-tag">GameModeSelector</span>
+        <div class="badge-row">
+          <div class="badge active">🎯 Clássico</div>
+          <div class="badge">⚡ Rápido</div>
+          <div class="badge">⚙️ Personalizado</div>
+        </div>
+        <span class="annotation">Badges com ícone — seleção única, brilho no ativo</span>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <span class="component-tag">GradientButton + ShineEffect</span>
+        <div class="btn btn-primary">✨ ENTRAR NA SALA</div>
+        <span class="annotation">Botão gradiente com efeito shine animado</span>
+      </div>
+    </div>
+
+    <!-- TAB: RECENTES (Recent Rooms) — shown as preview -->
+    <div class="section" style="margin-top: 8px;">
+      <span class="section-label">Tab: Salas Recentes (preview)</span>
+      <span class="component-tag">RecentRooms</span>
+      <h3>Salas Recentes</h3>
+      <p class="subtitle" style="margin-bottom:8px;">Reconecte rapidamente</p>
+
+      <div class="room-card">
+        <div class="room-avatar">🎩</div>
+        <div class="room-info">
+          <div class="name">Sala AB3X9K</div>
+          <div class="meta">Bancário: João · 4 jogadores · 2h atrás</div>
+        </div>
+        <div class="room-rejoin">Entrar</div>
+      </div>
+      <div class="room-card">
+        <div class="room-avatar">🚗</div>
+        <div class="room-info">
+          <div class="name">Sala KP82MN</div>
+          <div class="meta">Bancário: Ana · 3 jogadores · 1d atrás</div>
+        </div>
+        <div class="room-rejoin">Entrar</div>
+      </div>
+      <span class="annotation">Armazenado em localStorage — máximo 5 salas</span>
+    </div>
+
+    <div style="height: 24px;"></div>
+  </div>
+</body>
+</html>

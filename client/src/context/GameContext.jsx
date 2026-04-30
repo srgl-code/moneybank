@@ -324,11 +324,11 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const requestTransfer = useCallback((toId, amount, reason) =>
+  const requestTransfer = useCallback((toId, amount, reason, metadata = {}) =>
     new Promise((resolve, reject) => {
       socket.emit(
         'request_transfer',
-        { roomCode: state.roomCode, toId, amount, reason },
+        { roomCode: state.roomCode, toId, amount, reason, metadata },
         (res) => (res.success ? resolve(res) : reject(new Error(res.error)))
       );
     }),

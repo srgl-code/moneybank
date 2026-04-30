@@ -5,6 +5,7 @@ import { useGame } from '../context/GameContext.jsx';
 import RankingList from './RankingList.jsx';
 import TransactionHistory from './TransactionHistory.jsx';
 import TransferModal from './TransferModal.jsx';
+import BuyPropertyModal from './BuyPropertyModal.jsx';
 import AppHeader from './ui/AppHeader.jsx';
 import BottomNav from './ui/BottomNav.jsx';
 import AnimatedBalance from './ui/AnimatedBalance.jsx';
@@ -18,9 +19,10 @@ import SegmentedControl from './ui/SegmentedControl.jsx';
 import { timeAgo } from '../utils/format.js';
 
 export default function PlayerDashboard() {
-  const { gameState, currentPlayer, leaveRoom, collectFine } = useGame();
+  const { gameState, currentPlayer, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
   const [tab, setTab] = useState('ledger');
   const [openTransfer, setOpenTransfer] = useState(false);
+  const [openBuy, setOpenBuy] = useState(false);
 
   const all = gameState?.players ?? [];
   const bal = currentPlayer?.balance ?? 0;
@@ -35,6 +37,20 @@ export default function PlayerDashboard() {
   const notifications = [
     // Mock notifications based on history for now, or just empty if not fully implemented in state
   ];
+
+  const handleBuyProperty = async (property) => {
+    const banker = all.find(p => p.isBanker);
+    if (!banker) {
+      addToast('Bancário não encontrado!', 'error');
+      return;
+    }
+    try {
+      await requestTransfer(banker.id, property.totalValue, `Comprar: ${property.name}`, { propertyId: property.name });
+      addToast(`Solicitação para comprar ${property.name} enviada ao bancário!`, 'success');
+    } catch (e) {
+      addToast(e.message, 'error');
+    }
+  };
 
   return (
     <PageTransition className="min-h-screen bg-surface flex flex-col pb-32 md:pb-0">
@@ -94,8 +110,8 @@ export default function PlayerDashboard() {
             />
             <QuickActionButton 
               icon="🏡" 
-              label="Propriedades" 
-              onClick={() => document.getElementById('property-tracker')?.scrollIntoView({ behavior: 'smooth' })} 
+              label="Comprar" 
+              onClick={() => setOpenBuy(true)} 
               color="orange" 
               className="flex-1"
             />
@@ -112,9 +128,14 @@ export default function PlayerDashboard() {
         >
           <div className="flex justify-between items-end mb-4">
             <h3 className="font-headline font-bold text-lg text-on-surface">Minhas Propriedades</h3>
-            <span className="text-xs font-label text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
-              {currentPlayer?.properties?.length || 0} posses
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-label text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
+                {currentPlayer?.properties?.length || 0} posses
+              </span>
+              <button onClick={() => setOpenBuy(true)} className="btn-add text-xs py-1.5 px-3">
+                + Comprar
+              </button>
+            </div>
           </div>
           <PropertyTracker properties={currentPlayer?.properties || []} />
         </motion.section>
@@ -175,6 +196,16 @@ export default function PlayerDashboard() {
           currentPlayer={currentPlayer}
         />
       )}
+
+      <AnimatePresence>
+        {openBuy && (
+          <BuyPropertyModal
+            onClose={() => setOpenBuy(false)}
+            onBuyProperty={handleBuyProperty}
+            ownedProperties={all.flatMap(p => p.properties || [])}
+          />
+        )}
+      </AnimatePresence>
     </PageTransition>
   );
 }

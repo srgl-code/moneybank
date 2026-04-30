@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wireframe — Painel do Jogador (Player Dashboard)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f5f5; color: #333; display: flex; justify-content: center; padding: 24px; }
+    .phone { width: 375px; min-height: 812px; background: #fff; border: 2px solid #999; border-radius: 24px; overflow: hidden; position: relative; padding-bottom: 72px; }
+    .component-tag { font-size: 9px; background: #e0e0e0; color: #666; padding: 1px 5px; border-radius: 3px; font-family: monospace; display: inline-block; margin-bottom: 4px; }
+    .section { border: 1.5px dashed #bbb; margin: 8px; padding: 12px; border-radius: 8px; position: relative; }
+    .section-label { position: absolute; top: -8px; left: 8px; background: #fff; padding: 0 4px; font-size: 10px; color: #999; font-style: italic; }
+    h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555; }
+    .subtitle { font-size: 11px; color: #888; }
+    .annotation { font-size: 9px; color: #b55; background: #fef0f0; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: block; font-style: italic; }
+    .header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eee; gap: 10px; }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #ddd; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .header-info { flex: 1; }
+    .header-name { font-size: 14px; font-weight: 700; }
+    .header-role { font-size: 10px; color: #888; }
+    .bell { width: 32px; height: 32px; border-radius: 50%; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 16px; position: relative; }
+    .bell-dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; background: #c55; border-radius: 50%; }
+    .balance-card { background: #eee; border-radius: 16px; padding: 20px; text-align: center; margin: 8px; }
+    .balance-amount { font-size: 36px; font-weight: 800; margin: 4px 0; }
+    .balance-change { font-size: 12px; padding: 3px 10px; border-radius: 12px; display: inline-block; }
+    .balance-up { background: #e0f0e0; color: #2a7a2a; }
+    .balance-down { background: #f0e0e0; color: #a03030; }
+    .sparkline { width: 100%; height: 40px; border: 1px solid #ddd; border-radius: 8px; margin-top: 8px; display: flex; align-items: center; justify-content: center; background: #fafafa; }
+    .sparkline-line { width: 80%; height: 2px; background: linear-gradient(to right, #bbb 0%, #bbb 30%, #999 50%, #bbb 70%, #666 100%); position: relative; }
+    .quick-actions { display: flex; gap: 8px; padding: 0 8px; margin: 8px 0; }
+    .quick-action { flex: 1; height: 44px; border: 1.5px solid #ccc; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 600; background: #fafafa; }
+    .properties-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .property-card { border: 1.5px solid #ddd; border-radius: 10px; padding: 10px; background: #fafafa; }
+    .property-color { width: 100%; height: 6px; border-radius: 3px; margin-bottom: 6px; }
+    .property-name { font-size: 12px; font-weight: 600; }
+    .property-value { font-size: 11px; color: #888; }
+    .tabs { display: flex; gap: 0; background: #eee; border-radius: 10px; padding: 3px; margin: 8px; }
+    .tab { flex: 1; text-align: center; padding: 8px 0; font-size: 11px; font-weight: 600; border-radius: 8px; color: #888; }
+    .tab.active { background: #fff; color: #333; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .tx-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .tx-icon { width: 32px; height: 32px; border-radius: 8px; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .tx-info { flex: 1; }
+    .tx-name { font-size: 12px; font-weight: 600; }
+    .tx-desc { font-size: 10px; color: #999; }
+    .tx-amount { font-size: 13px; font-weight: 700; }
+    .tx-positive { color: #2a7a2a; }
+    .tx-negative { color: #c44; }
+    .bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; height: 64px; border-top: 1px solid #eee; display: flex; align-items: center; background: #fff; }
+    .nav-item { flex: 1; text-align: center; font-size: 10px; color: #999; }
+    .nav-item.active { color: #333; font-weight: 600; }
+    .nav-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+    .notif-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .notif-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; margin-top: 4px; flex-shrink: 0; }
+    .notif-text { font-size: 11px; }
+    .notif-time { font-size: 9px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="phone">
+
+    <!-- HEADER -->
+    <div class="header">
+      <span class="component-tag">AppHeader</span>
+      <div class="avatar">🎩</div>
+      <div class="header-info">
+        <div class="header-name">Carlos</div>
+        <div class="header-role">Sala AB3X9K</div>
+      </div>
+      <div class="bell">
+        🔔
+        <div class="bell-dot"></div>
+      </div>
+      <span class="component-tag">NotificationCenter</span>
+    </div>
+
+    <!-- BALANCE HERO -->
+    <div class="section" style="border:none; padding:0;">
+      <div class="balance-card">
+        <span class="component-tag">AnimatedBalance (gradient card)</span>
+        <div class="subtitle">Saldo Atual</div>
+        <div class="balance-amount">M$ 15.400</div>
+        <span class="balance-change balance-up">↑ +M$ 200 do Boardwalk</span>
+        <span class="annotation">Card com gradiente, número animado, glow effect</span>
+
+        <span class="component-tag" style="margin-top:8px;">MiniChart (sparkline)</span>
+        <div class="sparkline">
+          <div class="sparkline-line"></div>
+        </div>
+        <div style="display:flex; justify-content: space-between; font-size:9px; color:#aaa; margin-top:2px;">
+          <span>10 transações atrás</span>
+          <span>agora</span>
+        </div>
+        <span class="annotation">SVG sparkline — últimas 10 transações do jogador</span>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div style="padding: 0 4px;">
+      <span class="component-tag">QuickActions</span>
+      <div class="quick-actions">
+        <div class="quick-action">💸 Transferir</div>
+        <div class="quick-action">🏠 Propriedades</div>
+      </div>
+      <span class="annotation">Abre TransferModal / rola para PropertyTracker</span>
+    </div>
+
+    <!-- PROPERTY TRACKER -->
+    <div class="section">
+      <span class="section-label">Propriedades</span>
+      <span class="component-tag">PropertyTracker</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 style="margin:0;">Minhas Propriedades</h3>
+        <span class="subtitle">4 imóveis</span>
+      </div>
+      <div class="properties-grid">
+        <div class="property-card">
+          <div class="property-color" style="background:#3b82f6;"></div>
+          <span class="component-tag">PropertyCard</span>
+          <div class="property-name">Av. Atlântica</div>
+          <div class="property-value">M$ 3.200</div>
+        </div>
+        <div class="property-card">
+          <div class="property-color" style="background:#ef4444;"></div>
+          <div class="property-name">Rua Augusta</div>
+          <div class="property-value">M$ 2.800</div>
+        </div>
+        <div class="property-card">
+          <div class="property-color" style="background:#22c55e;"></div>
+          <div class="property-name">Copacabana</div>
+          <div class="property-value">M$ 1.500</div>
+        </div>
+        <div class="property-card">
+          <div class="property-color" style="background:#f59e0b;"></div>
+          <div class="property-name">Ipanema</div>
+          <div class="property-value">M$ 4.000</div>
+        </div>
+      </div>
+      <span class="annotation">Grid 2 colunas — cores de grupo do Monopoly — valor do imóvel</span>
+    </div>
+
+    <!-- TABS -->
+    <div>
+      <span class="component-tag">SegmentedControl</span>
+      <div class="tabs">
+        <div class="tab active">📋 Extrato</div>
+        <div class="tab">🏆 Ranking</div>
+        <div class="tab">🔔 Alertas</div>
+      </div>
+    </div>
+
+    <!-- TAB CONTENT: Extrato -->
+    <div class="section" style="border: none;">
+      <span class="section-label">Tab: Extrato</span>
+      <span class="component-tag">TransactionHistory</span>
+
+      <div class="tx-item">
+        <div class="tx-icon">📥</div>
+        <div class="tx-info">
+          <div class="tx-name">Aluguel Recebido</div>
+          <div class="tx-desc">De Ana · Rua Augusta</div>
+        </div>
+        <div class="tx-amount tx-positive">+M$ 50</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-icon">🏦</div>
+        <div class="tx-info">
+          <div class="tx-name">Passou na Largada</div>
+          <div class="tx-desc">Bônus da largada</div>
+        </div>
+        <div class="tx-amount tx-positive">+M$ 200</div>
+      </div>
+      <div class="tx-item">
+        <div class="tx-icon">💸</div>
+        <div class="tx-info">
+          <div class="tx-name">Comprou Propriedade</div>
+          <div class="tx-desc">Av. Atlântica</div>
+        </div>
+        <div class="tx-amount tx-negative">-M$ 3.200</div>
+      </div>
+    </div>
+
+    <!-- TAB CONTENT: Alertas (preview) -->
+    <div class="section" style="border-style: dotted; opacity: 0.6;">
+      <span class="section-label">Tab: Alertas (preview)</span>
+      <span class="component-tag">NotificationCenter (lista)</span>
+
+      <div class="notif-item">
+        <div class="notif-dot"></div>
+        <div>
+          <div class="notif-text"><b>Ana</b> te pagou M$ 50 de aluguel</div>
+          <div class="notif-time">2 min atrás</div>
+        </div>
+      </div>
+      <div class="notif-item">
+        <div class="notif-dot" style="background:#ccc;"></div>
+        <div>
+          <div class="notif-text">Você passou na <b>Largada</b> — +M$ 200</div>
+          <div class="notif-time">5 min atrás</div>
+        </div>
+      </div>
+      <div class="notif-item">
+        <div class="notif-dot" style="background:#ccc;"></div>
+        <div>
+          <div class="notif-text"><b>Pedro</b> comprou Copacabana por M$ 1.500</div>
+          <div class="notif-time">8 min atrás</div>
+        </div>
+      </div>
+      <span class="annotation">Eventos do jogo em tempo real via socket 'game_notification'</span>
+    </div>
+
+    <!-- BOTTOM NAV -->
+    <div class="bottom-nav">
+      <span class="component-tag" style="position:absolute;top:-14px;left:8px;">BottomNav</span>
+      <div class="nav-item active">
+        <span class="nav-icon">💰</span>
+        Carteira
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🏆</span>
+        Ranking
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🔔</span>
+        Alertas
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
