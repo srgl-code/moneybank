@@ -1,16 +1,18 @@
 import React from 'react';
 
 export const MiniChart = ({ data = [], color = '#14b8a6', height = 40 }) => {
-  if (!data || data.length < 2) {
+  const validData = data.filter(n => typeof n === 'number' && !isNaN(n));
+  
+  if (!validData || validData.length < 2) {
     return <div className="w-full opacity-30 flex items-center justify-center text-xs font-label" style={{ height }}>Sem dados</div>;
   }
 
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const min = Math.min(...validData);
+  const max = Math.max(...validData);
   const range = max - min || 1;
 
-  const points = data.map((val, idx) => {
-    const x = (idx / (data.length - 1)) * 100;
+  const points = validData.map((val, idx) => {
+    const x = (idx / (validData.length - 1)) * 100;
     const y = 100 - ((val - min) / range) * 100;
     return `${x},${y}`;
   }).join(' ');

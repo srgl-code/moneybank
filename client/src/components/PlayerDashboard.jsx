@@ -16,10 +16,12 @@ import { PropertyTracker } from './features/PropertyTracker.jsx';
 import { NotificationCenter } from './features/NotificationCenter.jsx';
 import { QuickActionButton } from './ui/QuickActionButton.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
+import TradePanel from './TradePanel.jsx';
+import TradeRequestModal from './TradeRequestModal.jsx';
 import { timeAgo } from '../utils/format.js';
 
 export default function PlayerDashboard() {
-  const { gameState, currentPlayer, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
+  const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
   const [tab, setTab] = useState('ledger');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [openBuy, setOpenBuy] = useState(false);
@@ -206,6 +208,12 @@ export default function PlayerDashboard() {
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {activeTrade && <TradePanel />}
+      </AnimatePresence>
+
+      <TradeRequestModal />
     </PageTransition>
   );
 }

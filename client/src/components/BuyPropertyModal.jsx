@@ -6,9 +6,25 @@ import { propertiesData } from '../data/properties.js';
 
 export default function BuyPropertyModal({ onClose, onBuyProperty, ownedProperties = [] }) {
   const [selectedProp, setSelectedProp] = useState(null);
+  const [filterGroup, setFilterGroup] = useState('Todos');
 
   // Consider ownedProperties might be strings (IDs/Names) or objects. Assuming names for simplicity.
   const availableProperties = propertiesData.filter(p => !ownedProperties.includes(p.name));
+  
+  const groups = ['Todos', ...new Set(propertiesData.map(p => p.group))];
+  
+  const filteredProperties = filterGroup === 'Todos' 
+    ? availableProperties 
+    : availableProperties.filter(p => p.group === filterGroup);
+
+  const getGroupColor = (group) => {
+    const colors = {
+      'Verde': '#4ade80', 'Vermelho': '#f87171', 'Rosa': '#f472b6', 
+      'Azul Escuro': '#1d4ed8', 'Azul Claro': '#60a5fa', 'Laranja': '#fb923c', 
+      'Amarelo': '#facc15', 'Roxo': '#c084fc', 'Ações': '#9ca3af', 'Todos': '#ffffff'
+    };
+    return colors[group] || '#e5e7eb';
+  };
 
   const handleBuy = () => {
     if (selectedProp) {
@@ -30,9 +46,29 @@ export default function BuyPropertyModal({ onClose, onBuyProperty, ownedProperti
           <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full text-on-surface-variant transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-surface-container-low hide-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 bg-surface-container-low hide-scrollbar flex flex-col">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-2 justify-center mb-6 border-b border-outline-variant/30 pb-4 shrink-0">
+            {groups.map(group => (
+              <button
+                key={group}
+                onClick={() => setFilterGroup(group)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold font-headline uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 border
+                  ${filterGroup === group 
+                    ? 'bg-primary text-on-primary border-primary scale-105 shadow-md' 
+                    : 'bg-surface text-on-surface hover:bg-surface-container border-outline-variant/50'
+                  }`}
+              >
+                {group !== 'Todos' && (
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getGroupColor(group) }} />
+                )}
+                {group}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap gap-6 justify-center">
-            {availableProperties.map(prop => {
+            {filteredProperties.map(prop => {
               const isSelected = selectedProp?.name === prop.name;
               return (
                 <div 

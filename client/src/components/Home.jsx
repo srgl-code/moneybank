@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, LogIn, PlusCircle, History, AlertCircle, Settings2, Wallet, Flag, User } from 'lucide-react';
+import { Loader2, LogIn, PlusCircle, History, AlertCircle, Settings2, Wallet, Flag, User, Clipboard } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
 import { PIN_OPTIONS, PinSVG, CUSTOM_PIN_ID, PinDisplay } from './PinIcon.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
@@ -229,7 +229,29 @@ export default function Home() {
                   transition={{ duration: 0.25 }}
                 >
                   <div>
-                    <label className="field-label">Código da Sala</label>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="field-label mb-0">Código da Sala</label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const text = await navigator.clipboard.readText();
+                            const pastedData = text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+                            if (pastedData) {
+                              setRoomCode(pastedData);
+                              const nextFocusIndex = Math.min(pastedData.length, 5);
+                              document.getElementById(`code-input-${nextFocusIndex}`)?.focus();
+                            }
+                          } catch (err) {
+                            console.error('Failed to read clipboard contents: ', err);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-surface-container rounded-full text-xs font-bold text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors border border-outline-variant/30"
+                        title="Colar código"
+                      >
+                        <Clipboard className="w-3.5 h-3.5" /> Colar
+                      </button>
+                    </div>
                     <div className="flex gap-2 justify-between">
                       {[0, 1, 2, 3, 4, 5].map((index) => (
                         <input
@@ -245,6 +267,16 @@ export default function Home() {
                             setRoomCode(newCode.join(''));
                             if (val && index < 5) {
                               document.getElementById(`code-input-${index + 1}`)?.focus();
+                            }
+                          }}
+                          onPaste={(e) => {
+                            e.preventDefault();
+                            const pastedData = e.clipboardData.getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+                            if (pastedData) {
+                              setRoomCode(pastedData);
+                              // focus the last filled input or the next empty one
+                              const nextFocusIndex = Math.min(pastedData.length, 5);
+                              document.getElementById(`code-input-${nextFocusIndex}`)?.focus();
                             }
                           }}
                           onKeyDown={(e) => {

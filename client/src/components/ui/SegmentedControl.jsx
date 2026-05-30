@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 
 export default function SegmentedControl({ options, value, onChange }) {
   return (
-    <div className="flex p-1 rounded-2xl bg-surface-container border border-outline-variant">
+    <div className="flex p-1 rounded-2xl bg-surface-container border border-outline-variant w-full min-w-max">
       {options.map((opt) => {
         const isActive = value === opt.value;
         return (
@@ -13,7 +13,7 @@ export default function SegmentedControl({ options, value, onChange }) {
             onClick={() => onChange(opt.value)}
             className={`
               relative flex-1 flex items-center justify-center gap-2 py-3 px-4
-              rounded-xl text-sm font-bold transition-colors duration-200 z-10
+              rounded-xl text-sm font-bold transition-colors duration-200 z-10 whitespace-nowrap
               ${isActive ? 'text-on-surface' : 'text-on-surface-variant hover:text-on-surface'}
             `}
           >

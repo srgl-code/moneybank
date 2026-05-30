@@ -76,6 +76,7 @@ function getRoomState(room) {
       .map(({ sessionId: _s, ...rest }) => rest), // strip internal sessionId from broadcast
     history: room.transactionHistory.slice(-50),
     pendingTransfers: room.pendingTransfers ?? [],
+    trades: room.trades ?? [],
     startingBalance: room.startingBalance,
     startingPassGo: room.startingPassGo ?? 200,
     status: room.status,
@@ -128,6 +129,7 @@ io.on('connection', (socket) => {
         players: [banker],
         transactionHistory: [],
         pendingTransfers: [],
+        trades: [],
         startingBalance: balance,
         startingPassGo: passGoAmt,
         status: 'active',
@@ -746,6 +748,269 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── request_trade ────────────────────────────────────────────────────────────
+  socket.on('request_trade', ({ roomCode, toId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const fromId = socket.id;
+      const sender = room.players.find(p => p.id === fromId);
+      const receiver = room.players.find(p => p.id === toId);
+      
+      if (!sender || !receiver) return callback({ success: false, error: 'Jogador não encontrado' });
+      if (sender.id === receiver.id) return callback({ success: false, error: 'Não podes negociar contigo mesmo' });
+      
+      const tradeId = uuidv4();
+      const newTrade = {
+        id: tradeId,
+        initiatorId: sender.id,
+        receiverId: receiver.id,
+        initiatorName: sender.name,
+        receiverName: receiver.name,
+        status: 'requested',
+        currentTurn: sender.id,
+        proposal: {
+          initiatorOffers: [],
+          initiatorMoney: 0,
+          receiverOffers: [],
+          receiverMoney: 0
+        }
+      };
+      
+      room.trades.push(newTrade);
+      io.to(receiver.id).emit('trade_requested', newTrade);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      
+      callback({ success: true, tradeId });
+    } catch (err) {
+      console.error('[request_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── respond_trade ────────────────────────────────────────────────────────────
+  socket.on('respond_trade', ({ roomCode, tradeId, accept } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
+      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
+      const trade = room.trades[tradeIdx];
+      
+      if (socket.id !== trade.receiverId) return callback({ success: false, error: 'Sem permissão' });
+      
+      if (accept) {
+        trade.status = 'active';
+        io.to(trade.initiatorId).emit('trade_started', trade);
+        io.to(trade.receiverId).emit('trade_started', trade);
+      } else {
+        room.trades.splice(tradeIdx, 1);
+        io.to(trade.initiatorId).emit('trade_rejected', { tradeId });
+      }
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[respond_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── update_trade_proposal ────────────────────────────────────────────────────
+  socket.on('update_trade_proposal', ({ roomCode, tradeId, proposal } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const trade = room.trades.find(t => t.id === tradeId);
+      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
+      
+      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
+      
+      trade.proposal = proposal;
+      
+      const otherId = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
+      io.to(otherId).emit('trade_proposal_updated', trade);
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[update_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── submit_trade_proposal ────────────────────────────────────────────────────
+  socket.on('submit_trade_proposal', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const trade = room.trades.find(t => t.id === tradeId);
+      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
+      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
+      
+      trade.currentTurn = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
+      
+      io.to(trade.initiatorId).emit('trade_proposal_received', trade);
+      io.to(trade.receiverId).emit('trade_proposal_received', trade);
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[submit_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── accept_trade_proposal ────────────────────────────────────────────────────
+  socket.on('accept_trade_proposal', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const trade = room.trades.find(t => t.id === tradeId);
+      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
+      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
+      
+      trade.status = 'banker_approval';
+      
+      io.to(trade.initiatorId).emit('trade_approval_request', trade);
+      io.to(trade.receiverId).emit('trade_approval_request', trade);
+      if (room.bankerId) io.to(room.bankerId).emit('trade_approval_request', trade);
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.to(room.bankerId).emit('game_notification', { type: 'info', message: 'Nova negociação pendente de aprovação!' });
+      
+      callback({ success: true });
+    } catch (err) {
+      console.error('[accept_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── approve_trade ────────────────────────────────────────────────────────────
+  socket.on('approve_trade', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+      
+      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
+      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
+      const trade = room.trades[tradeIdx];
+      
+      if (trade.status !== 'banker_approval') return callback({ success: false, error: 'Negociação não está aguardando aprovação' });
+      
+      const initiator = room.players.find(p => p.id === trade.initiatorId);
+      const receiver = room.players.find(p => p.id === trade.receiverId);
+      
+      if (!initiator || !receiver) {
+        room.trades.splice(tradeIdx, 1);
+        io.in(roomCode).emit('update_game_state', getRoomState(room));
+        return callback({ success: false, error: 'Jogador saiu da sala' });
+      }
+      if (!initiator.properties) initiator.properties = [];
+      if (!receiver.properties) receiver.properties = [];
+      
+      trade.proposal.initiatorOffers.forEach(prop => {
+        initiator.properties = initiator.properties.filter(p => p !== prop);
+        receiver.properties.push(prop);
+      });
+      trade.proposal.receiverOffers.forEach(prop => {
+        receiver.properties = receiver.properties.filter(p => p !== prop);
+        initiator.properties.push(prop);
+      });
+      
+      room.trades.splice(tradeIdx, 1);
+      
+      io.in(roomCode).emit('update_properties', { playerId: initiator.id, properties: initiator.properties });
+      io.in(roomCode).emit('update_properties', { playerId: receiver.id, properties: receiver.properties });
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      
+      io.to(initiator.id).emit('trade_completed', { tradeId });
+      io.to(receiver.id).emit('trade_completed', { tradeId });
+      
+      room.transactionHistory.push({
+        id: uuidv4(),
+        time: new Date().toISOString(),
+        fromName: initiator.name,
+        toName: receiver.name,
+        amount: trade.proposal.initiatorMoney > 0 ? trade.proposal.initiatorMoney : trade.proposal.receiverMoney,
+        type: 'transfer',
+        description: `Negociação concluída entre ${initiator.name} e ${receiver.name}`
+      });
+      trimHistory(room);
+      
+      callback({ success: true });
+    } catch (err) {
+      console.error('[approve_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── reject_trade_bank ────────────────────────────────────────────────────────
+  socket.on('reject_trade_bank', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+      
+      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
+      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
+      const trade = room.trades[tradeIdx];
+      
+      room.trades.splice(tradeIdx, 1);
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.to(trade.initiatorId).emit('trade_rejected_bank', { tradeId });
+      io.to(trade.receiverId).emit('trade_rejected_bank', { tradeId });
+      
+      callback({ success: true });
+    } catch (err) {
+      console.error('[reject_trade_bank]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── cancel_trade ─────────────────────────────────────────────────────────────
+  socket.on('cancel_trade', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      
+      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
+      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
+      const trade = room.trades[tradeIdx];
+      
+      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
+        return callback({ success: false, error: 'Sem permissão' });
+      }
+      
+      room.trades.splice(tradeIdx, 1);
+      
+      const otherId = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
+      io.to(otherId).emit('trade_cancelled', { tradeId });
+      
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[cancel_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
   // ── disconnect ────────────────────────────────────────────────────────────────
   socket.on('disconnect', (reason) => {
     const roomCode = socket.data.roomCode;
@@ -781,7 +1046,13 @@ function trimHistory(room) {
   }
 }
 
-// ─── Start ────────────────────────────────────────────────────────────────────
+// ─── Static File Serving ──────────────────────────────────────────────────────
+const clientDistPath = path.join(__dirname, '../client/dist');
+app.use(express.static(clientDistPath));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || '3001', 10);

@@ -16,12 +16,13 @@ import SegmentedControl from './ui/SegmentedControl.jsx';
 import PropertyCard from './PropertyCard.jsx';
 import { propertiesData } from '../data/properties.js';
 import RankingList from './RankingList.jsx';
+import TradePanel from './TradePanel.jsx';
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
 export default function BankerDashboard() {
   const {
-    roomCode, gameState, currentPlayer, pendingTransfers,
+    roomCode, gameState, currentPlayer, pendingTransfers, activeTrade,
     adjustBalance, resetBalances, closeRoom, leaveRoom, addToast,
     approveTransfer, rejectTransfer, passGo, startAuction, assignProperty
   } = useGame();
@@ -404,6 +405,10 @@ export default function BankerDashboard() {
           onClose={() => setApprovalReq(null)}
         />
       )}
+
+      <AnimatePresence>
+        {activeTrade && <TradePanel />}
+      </AnimatePresence>
     </PageTransition>
   );
 }

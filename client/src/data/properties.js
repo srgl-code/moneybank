@@ -35,5 +35,13 @@ export const propertiesData = [
   
   // Roxo
   { group: 'Roxo', name: 'Av. Ipiranga', rent: 60, rent1House: 300, rent2Houses: 900, rent3Houses: 2700, rent4Houses: 4000, rentHotel: 5000, houseCost: 500, hotelCost: 500, mortgageValue: 500, totalValue: 1000 },
-  { group: 'Roxo', name: 'Av. São João', rent: 80, rent1House: 400, rent2Houses: 1000, rent3Houses: 3000, rent4Houses: 4500, rentHotel: 6000, houseCost: 500, hotelCost: 500, mortgageValue: 500, totalValue: 1200 }
+  { group: 'Roxo', name: 'Av. São João', rent: 80, rent1House: 400, rent2Houses: 1000, rent3Houses: 3000, rent4Houses: 4500, rentHotel: 6000, houseCost: 500, hotelCost: 500, mortgageValue: 500, totalValue: 1200 },
+  
+  // Ações
+  { group: 'Ações', name: 'Ton Viagens', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 },
+  { group: 'Ações', name: 'Itol', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 },
+  { group: 'Ações', name: 'Ipiranga', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 },
+  { group: 'Ações', name: 'Fiet', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 },
+  { group: 'Ações', name: 'Viva', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 },
+  { group: 'Ações', name: 'Nevea', rent: 50, rent1House: 0, rent2Houses: 0, rent3Houses: 0, rent4Houses: 0, rentHotel: 0, houseCost: 0, hotelCost: 0, mortgageValue: 100, totalValue: 200 }
 ];

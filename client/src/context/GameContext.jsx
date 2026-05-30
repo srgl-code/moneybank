@@ -7,8 +7,10 @@ const initialState = {
   roomCode: null,
   mySocketId: null,       // tracks current socket.id so we can locate ourselves in gameState
   currentPlayer: null,    // own player object (kept in sync with gameState)
-  gameState: null,        // { roomCode, players, history, pendingTransfers, startingBalance, status }
+  gameState: null,        // { roomCode, players, history, pendingTransfers, startingBalance, status, trades }
   pendingTransfers: [],   // kept in sync from gameState for easy access
+  activeTrade: null,      // current trade being negotiated or requested
+  tradeRequests: [],      // incoming trade requests
   toasts: [],
   isConnecting: false,
   connectionError: null,
@@ -35,13 +37,64 @@ function reducer(state, action) {
       
       // Keep currentPlayer fresh from the canonical server state
       const updated = gameState.players?.find((p) => p.id === state.mySocketId);
+      const isBanker = updated?.isBanker;
+      
+      // Update activeTrade if it exists in gameState.trades
+      let activeTrade = state.activeTrade;
+      if (activeTrade) {
+        const serverTrade = gameState.trades?.find(t => t.id === activeTrade.id);
+        if (serverTrade) {
+          activeTrade = serverTrade;
+        } else if (activeTrade.status !== 'requested') {
+          // If it's not in the server and not just requested, it might have been resolved/cancelled
+          activeTrade = null;
+        }
+      } else if (gameState.trades) {
+        // Auto-pick up an active trade if we don't have one set, but one exists for us
+        const relevantTrade = gameState.trades.find(t => {
+          if (t.initiatorId === state.mySocketId || t.receiverId === state.mySocketId) return true;
+          if (isBanker && t.status === 'banker_approval') return true;
+          return false;
+        });
+        if (relevantTrade) {
+          activeTrade = relevantTrade;
+        }
+      }
+      
       return {
         ...state,
         gameState,
         pendingTransfers: gameState.pendingTransfers ?? state.pendingTransfers ?? [],
         currentPlayer: updated ?? state.currentPlayer,
+        activeTrade,
       };
     }
+
+    case 'SET_ACTIVE_TRADE':
+      return { ...state, activeTrade: action.payload, tradeRequests: [] };
+
+    case 'SET_ACTIVE_TRADE_IF_INVOLVED': {
+      const trade = action.payload;
+      if (!trade) return { ...state, activeTrade: null, tradeRequests: [] };
+      
+      const isBanker = state.currentPlayer?.isBanker;
+      const isInitiator = trade.initiatorId === state.mySocketId;
+      const isReceiver = trade.receiverId === state.mySocketId;
+      
+      if (isBanker || isInitiator || isReceiver) {
+        return { ...state, activeTrade: trade, tradeRequests: [] };
+      }
+      return state;
+    }
+
+    case 'ADD_TRADE_REQUEST':
+      if (state.activeTrade) return state; // Ignore if already in a trade
+      // Prevent duplicate requests from the same initiator
+      if (state.tradeRequests.some(t => t.initiatorId === action.payload.initiatorId)) return state;
+      return { ...state, tradeRequests: [...state.tradeRequests, action.payload] };
+
+    case 'REMOVE_TRADE_REQUEST':
+      return { ...state, tradeRequests: state.tradeRequests.filter((t) => t.id !== action.payload) };
 
     case 'ADD_PENDING_TRANSFER':
       return { ...state, pendingTransfers: [...state.pendingTransfers, action.payload] };
@@ -143,6 +196,46 @@ export function GameProvider({ children }) {
       console.error('[socket] connect_error', err.message);
     };
 
+    const onTradeRequested = (trade) => {
+      dispatch({ type: 'ADD_TRADE_REQUEST', payload: trade });
+      addToast(`🤝 ${trade.initiatorName} quer negociar contigo!`, 'info', 8000);
+    };
+    const onTradeStarted = (trade) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: trade });
+    };
+    const onTradeProposalUpdated = (trade) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: trade });
+    };
+    const onTradeProposalReceived = (trade) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: trade });
+      addToast('📋 Nova proposta de negociação recebida!', 'info');
+    };
+    const onTradeApprovalRequest = (trade) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE_IF_INVOLVED', payload: trade });
+      if (trade.initiatorId === socket.id || trade.receiverId === socket.id) {
+        addToast('⏳ Negociação enviada para aprovação do banco.', 'info');
+      } else if (state.currentPlayer?.isBanker) {
+        addToast('⚖️ Nova negociação aguardando sua aprovação!', 'warning', 8000);
+      }
+    };
+    const onTradeCompleted = ({ tradeId }) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
+      addToast('✅ Negociação concluída com sucesso!', 'success');
+    };
+    const onTradeRejectedBank = ({ tradeId }) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
+      addToast('❌ O Banco recusou a negociação.', 'error');
+    };
+    const onTradeRejected = ({ tradeId }) => {
+      dispatch({ type: 'REMOVE_TRADE_REQUEST', payload: tradeId });
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
+      addToast('❌ Negociação recusada pelo jogador.', 'warning');
+    };
+    const onTradeCancelled = ({ tradeId }) => {
+      dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
+      addToast('🛑 A negociação foi cancelada.', 'warning');
+    };
+
     socket.on('connect',              onConnect);
     socket.on('update_game_state',    onUpdateGameState);
     socket.on('received_payment',     onReceivedPayment);
@@ -155,6 +248,15 @@ export function GameProvider({ children }) {
     socket.on('balances_reset',       onBalancesReset);
     socket.on('room_closed',          onRoomClosed);
     socket.on('connect_error',        onConnectError);
+    socket.on('trade_requested',      onTradeRequested);
+    socket.on('trade_started',        onTradeStarted);
+    socket.on('trade_proposal_updated', onTradeProposalUpdated);
+    socket.on('trade_proposal_received', onTradeProposalReceived);
+    socket.on('trade_approval_request', onTradeApprovalRequest);
+    socket.on('trade_completed',      onTradeCompleted);
+    socket.on('trade_rejected_bank',  onTradeRejectedBank);
+    socket.on('trade_rejected',       onTradeRejected);
+    socket.on('trade_cancelled',      onTradeCancelled);
 
     return () => {
       socket.off('connect',             onConnect);
@@ -169,6 +271,15 @@ export function GameProvider({ children }) {
       socket.off('balances_reset',      onBalancesReset);
       socket.off('room_closed',         onRoomClosed);
       socket.off('connect_error',       onConnectError);
+      socket.off('trade_requested',     onTradeRequested);
+      socket.off('trade_started',       onTradeStarted);
+      socket.off('trade_proposal_updated', onTradeProposalUpdated);
+      socket.off('trade_proposal_received', onTradeProposalReceived);
+      socket.off('trade_approval_request', onTradeApprovalRequest);
+      socket.off('trade_completed',     onTradeCompleted);
+      socket.off('trade_rejected_bank', onTradeRejectedBank);
+      socket.off('trade_rejected',      onTradeRejected);
+      socket.off('trade_cancelled',     onTradeCancelled);
     };
   }, [addToast]);
 
@@ -433,6 +544,71 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
+  const requestTrade = useCallback((toId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('request_trade', { roomCode: state.roomCode, toId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const respondTrade = useCallback((tradeId, accept) => {
+    dispatch({ type: 'REMOVE_TRADE_REQUEST', payload: tradeId });
+    return new Promise((resolve, reject) => {
+      socket.emit('respond_trade', { roomCode: state.roomCode, tradeId, accept }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    });
+  }, [state.roomCode]);
+
+  const updateTradeProposal = useCallback((tradeId, proposal) =>
+    new Promise((resolve, reject) => {
+      socket.emit('update_trade_proposal', { roomCode: state.roomCode, tradeId, proposal }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const submitTradeProposal = useCallback((tradeId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('submit_trade_proposal', { roomCode: state.roomCode, tradeId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const acceptTradeProposal = useCallback((tradeId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('accept_trade_proposal', { roomCode: state.roomCode, tradeId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const cancelTrade = useCallback((tradeId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('cancel_trade', { roomCode: state.roomCode, tradeId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+  
+  const approveTradeBank = useCallback((tradeId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('approve_trade', { roomCode: state.roomCode, tradeId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+  
+  const rejectTradeBank = useCallback((tradeId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('reject_trade_bank', { roomCode: state.roomCode, tradeId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
   // ── Context Value ─────────────────────────────────────────────────────────────
   const value = {
     ...state,
@@ -452,6 +628,14 @@ export function GameProvider({ children }) {
     startAuction,
     assignProperty,
     removeProperty,
+    requestTrade,
+    respondTrade,
+    updateTradeProposal,
+    submitTradeProposal,
+    acceptTradeProposal,
+    cancelTrade,
+    approveTradeBank,
+    rejectTradeBank,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

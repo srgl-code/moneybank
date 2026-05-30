@@ -1,12 +1,25 @@
 import React from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { PinDisplay } from './PinIcon.jsx';
+import { useGame } from '../context/GameContext.jsx';
+import { ArrowRightLeft } from 'lucide-react';
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 export default function RankingList({ players, myId }) {
+  const { requestTrade, addToast } = useGame();
+  
+  const handleRequestTrade = async (player) => {
+    try {
+      await requestTrade(player.id);
+      addToast(`Pedido de negociação enviado para ${player.name}!`, 'success');
+    } catch (e) {
+      addToast(`Erro: ${e.message}`, 'error');
+    }
+  };
+  
   // Sort: exclude bankers, sort by balance
   const sorted = players
     .filter(p => !p.isBanker)
@@ -95,12 +108,27 @@ export default function RankingList({ players, myId }) {
                   </p>
                 </div>
 
-                {/* Balance */}
-                  <div className="flex-shrink-0 text-right">
+                {/* Balance & Actions */}
+                <div className="flex-shrink-0 flex items-center gap-3 text-right">
+                  <div className="flex flex-col items-end">
                     <span className={`font-headline font-black text-base tracking-tight ${isFirst ? 'text-amber-700' : isMe ? 'text-teal-700' : 'text-on-surface'}`}>
                       {fmt(p.balance)}
                     </span>
                   </div>
+                  {!isMe && (
+                    <button
+                      onClick={() => handleRequestTrade(p)}
+                      className={`p-2 rounded-full transition-colors ${
+                        isFirst 
+                          ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' 
+                          : 'bg-surface-container-high text-primary hover:bg-primary-container'
+                      }`}
+                      title="Negociar"
+                    >
+                      <ArrowRightLeft size={18} />
+                    </button>
+                  )}
+                </div>
               </motion.div>
             );
           })}
