@@ -64,11 +64,52 @@ function recordBalanceHistory(player) {
   }
 }
 
+function deduplicatePlayers(room) {
+  if (!room || !Array.isArray(room.players)) return;
+  const unique = [];
+  const seenNames = new Map(); // normalizedName -> index in unique
+
+  for (const player of room.players) {
+    if (player.isBanker) {
+      unique.push(player);
+      continue;
+    }
+    const norm = player.name ? player.name.trim().toLowerCase() : '';
+    if (!norm) continue;
+
+    if (seenNames.has(norm)) {
+      const idx = seenNames.get(norm);
+      const existing = unique[idx];
+      // Merge properties
+      const existingProps = new Set(existing.properties || []);
+      (player.properties || []).forEach((p) => existingProps.add(p));
+      existing.properties = Array.from(existingProps);
+
+      // Keep active socket if the duplicate has a valid socket
+      if (player.id && player.id.length > 5 && player.id !== existing.id) {
+        existing.id = player.id;
+      }
+      // If the duplicate had a higher balance, keep it
+      if (player.balance > existing.balance) {
+        existing.balance = player.balance;
+      }
+      if (player.balanceHistory && player.balanceHistory.length > (existing.balanceHistory?.length || 0)) {
+        existing.balanceHistory = player.balanceHistory;
+      }
+    } else {
+      seenNames.set(norm, unique.length);
+      unique.push(player);
+    }
+  }
+  room.players = unique;
+}
+
 /**
  * Returns a serializable snapshot of the room state (no sessionIds leaked).
  * Players are already sorted by descending balance for the ranking.
  */
 function getRoomState(room) {
+  deduplicatePlayers(room);
   return {
     roomCode: room.roomCode,
     players: [...room.players]
@@ -160,12 +201,38 @@ io.on('connection', (socket) => {
       if (!room) return callback({ success: false, error: 'Sala não encontrada. Verifique o código.' });
       if (room.status === 'closed') return callback({ success: false, error: 'Esta sala foi encerrada' });
 
-      // ── Reconnect via saved session ──────────────────────────────────────────
+      deduplicatePlayers(room);
+
+      const safeName = sanitizeString(playerName, 20);
+      const safeAvatar = sanitizeString(avatar, 4);
+      const safeColor = sanitizeString(color, 10);
+
+      // Helper to update socket IDs in transfers and trades
+      const updateSocketReferences = (oldSocketId, newSocketId) => {
+        if (!oldSocketId || oldSocketId === newSocketId) return;
+        room.pendingTransfers.forEach((req) => {
+          if (req.fromId === oldSocketId) req.fromId = newSocketId;
+          if (req.toId === oldSocketId) req.toId = newSocketId;
+        });
+        if (room.trades) {
+          room.trades.forEach((trade) => {
+            if (trade.initiatorId === oldSocketId) trade.initiatorId = newSocketId;
+            if (trade.receiverId === oldSocketId) trade.receiverId = newSocketId;
+            if (trade.currentTurn === oldSocketId) trade.currentTurn = newSocketId;
+          });
+        }
+      };
+
+      // ── 1. Reconnect via saved sessionId ─────────────────────────────────────
       if (sessionId && typeof sessionId === 'string') {
         const existing = room.players.find((p) => p.sessionId === sessionId);
         if (existing) {
+          const oldSocketId = existing.id;
           existing.id = socket.id;                      // update to new socket
           if (existing.isBanker) room.bankerId = socket.id;
+          if (safeAvatar) existing.avatar = safeAvatar;
+          if (safeColor) existing.color = safeColor;
+          updateSocketReferences(oldSocketId, socket.id);
 
           socket.join(code);
           socket.data.roomCode = code;
@@ -174,7 +241,7 @@ io.on('connection', (socket) => {
           io.in(code).emit('player_rejoined', { playerName: existing.name });
           io.in(code).emit('update_game_state', getRoomState(room));
 
-          console.log(`[room:rejoin] ${code}  "${existing.name}"`);
+          console.log(`[room:rejoin-session] ${code}  "${existing.name}"`);
           return callback({
             success: true,
             roomCode: code,
@@ -185,13 +252,39 @@ io.on('connection', (socket) => {
         }
       }
 
+      // ── 2. Reconnect/Resume via matching Player Name (Prevent duplication!) ───
+      if (safeName) {
+        const existingByName = room.players.find(
+          (p) => p.name && p.name.trim().toLowerCase() === safeName.trim().toLowerCase()
+        );
+        if (existingByName) {
+          const oldSocketId = existingByName.id;
+          existingByName.id = socket.id;                // reconnect to existing player
+          if (existingByName.isBanker) room.bankerId = socket.id;
+          if (safeAvatar) existingByName.avatar = safeAvatar;
+          if (safeColor) existingByName.color = safeColor;
+          updateSocketReferences(oldSocketId, socket.id);
 
-      // ── New player ────────────────────────────────────────────────────────────
-      const safeName = sanitizeString(playerName, 20);
+          socket.join(code);
+          socket.data.roomCode = code;
+          socket.data.sessionId = existingByName.sessionId;
+
+          io.in(code).emit('player_rejoined', { playerName: existingByName.name });
+          io.in(code).emit('update_game_state', getRoomState(room));
+
+          console.log(`[room:rejoin-name] ${code}  "${existingByName.name}"`);
+          return callback({
+            success: true,
+            roomCode: code,
+            sessionId: existingByName.sessionId,
+            player: existingByName,
+            gameState: getRoomState(room),
+          });
+        }
+      }
+
+      // ── 3. Create New Player (only if brand new player) ───────────────────────
       if (!safeName) return callback({ success: false, error: 'Nome inválido' });
-
-      const safeAvatar = sanitizeString(avatar, 4) || '👤';
-      const safeColor = sanitizeString(color, 10) || null;
 
       const humanPlayers = room.players.filter((p) => !p.isBanker);
       if (humanPlayers.length >= 8) {
@@ -206,8 +299,8 @@ io.on('connection', (socket) => {
         name: safeName,
         balance: room.startingBalance,
         isBanker: false,
-        avatar: safeAvatar,
-        color: safeColor,
+        avatar: safeAvatar || '👤',
+        color: safeColor || null,
         properties: [],
         balanceHistory: [room.startingBalance],
       };
@@ -1008,6 +1101,48 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('[cancel_trade]', err);
       callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  // ── kick_player (Banker only) ────────────────────────────────────────────────
+  socket.on('kick_player', ({ roomCode, targetId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const code = sanitizeString(roomCode, 6)?.toUpperCase();
+      const room = rooms[code];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Apenas o bancário pode remover jogadores' });
+
+      const idx = room.players.findIndex((p) => p.id === targetId);
+      if (idx === -1) return callback({ success: false, error: 'Jogador não encontrado' });
+
+      const kickedPlayer = room.players[idx];
+      if (kickedPlayer.isBanker) return callback({ success: false, error: 'Não é possível remover o bancário' });
+
+      room.players.splice(idx, 1);
+
+      // Clean pending transfers & trades involving this player
+      room.pendingTransfers = room.pendingTransfers.filter(
+        (r) => r.fromId !== targetId && r.toId !== targetId
+      );
+      if (room.trades) {
+        room.trades = room.trades.filter(
+          (t) => t.initiatorId !== targetId && t.receiverId !== targetId
+        );
+      }
+
+      io.in(code).emit('update_game_state', getRoomState(room));
+      io.to(targetId).emit('notification', { type: 'error', message: 'Foste removido da sala pelo bancário' });
+      io.in(code).emit('game_notification', {
+        type: 'warning',
+        message: `${kickedPlayer.name} foi removido da sala`,
+      });
+
+      console.log(`[player:kicked] ${code} "${kickedPlayer.name}"`);
+      callback({ success: true });
+    } catch (err) {
+      console.error('[kick_player]', err);
+      callback({ success: false, error: 'Erro interno do servidor' });
     }
   });
 

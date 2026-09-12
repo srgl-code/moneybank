@@ -1,22 +1,37 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { PinDisplay } from './PinIcon.jsx';
 import { useGame } from '../context/GameContext.jsx';
-import { ArrowRightLeft } from 'lucide-react';
+import { ArrowRightLeft, UserX, Loader2 } from 'lucide-react';
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-export default function RankingList({ players, myId }) {
-  const { requestTrade, addToast } = useGame();
-  
+export default function RankingList({ players, myId, isBanker }) {
+  const { requestTrade, kickPlayer, addToast } = useGame();
+  const [confirmKickId, setConfirmKickId] = useState(null);
+  const [kickingId, setKickingId] = useState(null);
+
   const handleRequestTrade = async (player) => {
     try {
       await requestTrade(player.id);
       addToast(`Pedido de negociação enviado para ${player.name}!`, 'success');
     } catch (e) {
       addToast(`Erro: ${e.message}`, 'error');
+    }
+  };
+
+  const handleKick = async (player) => {
+    setKickingId(player.id);
+    try {
+      await kickPlayer(player.id);
+      addToast(`Jogador ${player.name} removido da sala.`, 'info');
+      setConfirmKickId(null);
+    } catch (e) {
+      addToast(`Erro ao remover: ${e.message}`, 'error');
+    } finally {
+      setKickingId(null);
     }
   };
   
@@ -109,24 +124,52 @@ export default function RankingList({ players, myId }) {
                 </div>
 
                 {/* Balance & Actions */}
-                <div className="flex-shrink-0 flex items-center gap-3 text-right">
-                  <div className="flex flex-col items-end">
+                <div className="flex-shrink-0 flex items-center gap-2 text-right">
+                  <div className="flex flex-col items-end mr-1">
                     <span className={`font-headline font-black text-base tracking-tight ${isFirst ? 'text-amber-700' : isMe ? 'text-teal-700' : 'text-on-surface'}`}>
                       {fmt(p.balance)}
                     </span>
                   </div>
-                  {!isMe && (
-                    <button
-                      onClick={() => handleRequestTrade(p)}
-                      className={`p-2 rounded-full transition-colors ${
-                        isFirst 
-                          ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' 
-                          : 'bg-surface-container-high text-primary hover:bg-primary-container'
-                      }`}
-                      title="Negociar"
-                    >
-                      <ArrowRightLeft size={18} />
-                    </button>
+                  {isBanker ? (
+                    confirmKickId === p.id ? (
+                      <div className="flex items-center gap-1 bg-error/10 p-1 rounded-xl">
+                        <button
+                          onClick={() => handleKick(p)}
+                          disabled={kickingId === p.id}
+                          className="px-2 py-1 text-[10px] font-bold rounded-lg bg-error text-white border-none cursor-pointer"
+                        >
+                          {kickingId === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Remover'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmKickId(null)}
+                          className="px-2 py-1 text-[10px] font-bold rounded-lg bg-surface text-on-surface-variant border-none cursor-pointer"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmKickId(p.id)}
+                        className="p-2 rounded-full transition-colors bg-surface-container-high text-on-surface-variant hover:bg-error/10 hover:text-error"
+                        title={`Remover ${p.name}`}
+                      >
+                        <UserX size={16} />
+                      </button>
+                    )
+                  ) : (
+                    !isMe && (
+                      <button
+                        onClick={() => handleRequestTrade(p)}
+                        className={`p-2 rounded-full transition-colors ${
+                          isFirst 
+                            ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' 
+                            : 'bg-surface-container-high text-primary hover:bg-primary-container'
+                        }`}
+                        title="Negociar"
+                      >
+                        <ArrowRightLeft size={18} />
+                      </button>
+                    )
                   )}
                 </div>
               </motion.div>

@@ -144,6 +144,26 @@ export function GameProvider({ children }) {
     const onConnect = () => {
       dispatch({ type: 'SET_MY_ID', payload: socket.id });
       dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
+
+      // Automatically rejoin room on socket reconnect (e.g. network switch/phone lock)
+      try {
+        const saved = JSON.parse(localStorage.getItem('moneybank_session') || '{}');
+        if (saved?.roomCode && saved?.sessionId) {
+          socket.emit(
+            'join_room',
+            { roomCode: saved.roomCode, sessionId: saved.sessionId },
+            (res) => {
+              if (res && res.success) {
+                dispatch({ type: 'SET_MY_ID',         payload: socket.id });
+                dispatch({ type: 'SET_ROOM',           payload: res.roomCode });
+                dispatch({ type: 'SET_CURRENT_PLAYER', payload: res.player });
+                dispatch({ type: 'UPDATE_GAME_STATE',  payload: res.gameState });
+                dispatch({ type: 'SET_SCREEN',         payload: res.player.isBanker ? 'banker' : 'player' });
+              }
+            }
+          );
+        }
+      } catch (e) {}
     };
 
     const onUpdateGameState = (gameState) => {
@@ -281,7 +301,7 @@ export function GameProvider({ children }) {
       socket.off('trade_rejected',      onTradeRejected);
       socket.off('trade_cancelled',     onTradeCancelled);
     };
-  }, [addToast]);
+  }, [addToast, state.currentPlayer?.isBanker]);
 
   // ── Auto-reconnect from saved session on mount ──────────────────────────────
   useEffect(() => {
@@ -309,7 +329,7 @@ export function GameProvider({ children }) {
         { roomCode: session.roomCode, sessionId: session.sessionId },
         (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
-          if (res.success) {
+          if (res && res.success) {
             dispatch({ type: 'SET_MY_ID',          payload: socket.id });
             dispatch({ type: 'SET_ROOM',            payload: res.roomCode });
             dispatch({ type: 'SET_CURRENT_PLAYER',  payload: res.player });
@@ -334,7 +354,7 @@ export function GameProvider({ children }) {
         localStorage.removeItem('moneybank_session');
       });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [addToast]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
   const ensureConnected = useCallback(() =>
@@ -396,8 +416,26 @@ export function GameProvider({ children }) {
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
       await ensureConnected();
+
+      // Fallback: check if we have a saved session for this room if sessionId wasn't passed
+      let effectiveSessionId = sessionId;
+      if (!effectiveSessionId) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('moneybank_session') || '{}');
+          if (saved.roomCode?.toUpperCase() === roomCode?.toUpperCase() && saved.sessionId) {
+            effectiveSessionId = saved.sessionId;
+          } else {
+            const recent = JSON.parse(localStorage.getItem('moneybank_recent_rooms') || '[]');
+            const match = recent.find((r) => r.roomCode?.toUpperCase() === roomCode?.toUpperCase());
+            if (match?.sessionId) {
+              effectiveSessionId = match.sessionId;
+            }
+          }
+        } catch (e) {}
+      }
+
       return new Promise((resolve, reject) => {
-        socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId }, (res) => {
+        socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId: effectiveSessionId }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
@@ -609,6 +647,14 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
+  const kickPlayer = useCallback((targetId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('kick_player', { roomCode: state.roomCode, targetId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
   // ── Context Value ─────────────────────────────────────────────────────────────
   const value = {
     ...state,
@@ -636,6 +682,7 @@ export function GameProvider({ children }) {
     cancelTrade,
     approveTradeBank,
     rejectTradeBank,
+    kickPlayer,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
