@@ -57,7 +57,7 @@ export default function CardMachine({ player, onConfirm, onCancel }) {
 
           {/* Player info */}
           <div className="flex items-center gap-2.5 mb-4 p-2.5 rounded-xl bg-surface-container border border-outline-variant/15">
-            <PinDisplay avatar={player.avatar} size={20} />
+            <PinDisplay avatar={player.avatar} photo={player.photo} size={20} />
             <div className="min-w-0">
               <div className="text-on-surface font-bold text-sm truncate">{player.name}</div>
               <div className="text-primary text-[10px] font-headline font-semibold">Saldo: {fmt(player.balance)}</div>

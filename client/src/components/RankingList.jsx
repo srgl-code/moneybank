@@ -110,7 +110,7 @@ export default function RankingList({ players, myId, isBanker }) {
                       : 'bg-surface-container border-outline-variant/50'
                   }
                 `}>
-                  <PinDisplay avatar={p.avatar} color={p.color} size={22} />
+                  <PinDisplay avatar={p.avatar} color={p.color} photo={p.photo} size={22} />
                 </div>
 
                 {/* Name + label */}

@@ -97,19 +97,34 @@ export function PinSVG({ size = 28, color }) {
 
 /** 
  * The main component to display a player's avatar.
- * Handles IDs from PIN_OPTIONS, custom colors, or bank icon.
+ * Handles IDs from PIN_OPTIONS, custom colors, uploaded profile photos, or bank icon.
  */
-export function PinDisplay({ avatar, color, size = 32 }) {
+export function PinDisplay({ avatar, color, photo, size = 32 }) {
   // Handle Banker
   if (avatar === '🏦' || avatar === 'bank') {
     return <GamePin color="#006a46" size={size} />;
   }
 
   const pin = PIN_OPTIONS.find(p => p.id === avatar);
-  if (pin) {
-    return <GamePin color={color || pin.color} size={size} />;
+  const pinColor = color || pin?.color || '#3b82f6';
+
+  // Uploaded profile photo: circular avatar with the player's pin color as a ring,
+  // plus a tiny pin-colored dot badge so the pin identity stays visible at a glance.
+  if (photo) {
+    return (
+      <div
+        className="relative flex items-center justify-center flex-shrink-0 select-none rounded-full overflow-hidden"
+        style={{ width: size, height: size, border: `2px solid ${pinColor}`, boxShadow: `0 4px 8px ${pinColor}44` }}
+      >
+        <img src={photo} alt="Foto de perfil" className="w-full h-full object-cover" />
+        <span
+          className="absolute bottom-0 right-0 rounded-full border border-white"
+          style={{ width: Math.max(6, size * 0.28), height: Math.max(6, size * 0.28), backgroundColor: pinColor }}
+        />
+      </div>
+    );
   }
 
-  // Fallback to custom color
-  return <GamePin color={color || '#3b82f6'} size={size} />;
+  // Fallback to custom color / default pin shape
+  return <GamePin color={pinColor} size={size} />;
 }

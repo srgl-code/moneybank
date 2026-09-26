@@ -12,8 +12,7 @@ export default function TradePanel() {
     currentPlayer, 
     activeTrade, 
     updateTradeProposal, 
-    submitTradeProposal, 
-    acceptTradeProposal, 
+    setTradeReady, 
     cancelTrade,
     approveTradeBank,
     rejectTradeBank,
@@ -31,12 +30,11 @@ export default function TradePanel() {
   const [theirOffers, setTheirOffers] = useState([]);
   const [myMoney, setMyMoney] = useState(0);
   const [theirMoney, setTheirMoney] = useState(0);
-  const [hasModified, setHasModified] = useState(false);
 
   const isInitiator = currentPlayer?.id === activeTrade?.initiatorId;
 
   useEffect(() => {
-    // Sync local state when the proposal updates from server
+    // Sync local state whenever the proposal updates from server (live for both sides)
     if (activeTrade && activeTrade.proposal) {
       if (isInitiator) {
         setMyOffers(activeTrade.proposal.initiatorOffers || []);
@@ -49,7 +47,6 @@ export default function TradePanel() {
         setTheirOffers(activeTrade.proposal.initiatorOffers || []);
         setTheirMoney(activeTrade.proposal.initiatorMoney || 0);
       }
-      setHasModified(false);
     }
   }, [activeTrade, isInitiator]);
 
@@ -64,11 +61,13 @@ export default function TradePanel() {
   const me = isInitiator ? initiator : receiver;
   const them = isInitiator ? receiver : initiator;
 
-  const isMyTurn = activeTrade.currentTurn === myId && activeTrade.status === 'active';
+  const isEditable = activeTrade.status === 'active';
   const isAwaitingApproval = activeTrade.status === 'banker_approval';
+  const myReady = isInitiator ? activeTrade.initiatorReady : activeTrade.receiverReady;
+  const theirReady = isInitiator ? activeTrade.receiverReady : activeTrade.initiatorReady;
 
   const saveProposal = (newMyOffers, newMyMoney, newTheirOffers, newTheirMoney) => {
-    if (!isMyTurn) return;
+    if (!isEditable) return;
     const proposal = isInitiator ? {
       initiatorOffers: newMyOffers,
       initiatorMoney: newMyMoney,
@@ -80,36 +79,40 @@ export default function TradePanel() {
       receiverOffers: newMyOffers,
       receiverMoney: newMyMoney
     };
-    setHasModified(true);
     updateTradeProposal(activeTrade.id, proposal);
   };
 
   const handleAddMyOffer = (propId) => {
-    if (!isMyTurn || myOffers.includes(propId)) return;
+    if (!isEditable || myOffers.includes(propId)) return;
     const next = [...myOffers, propId];
     setMyOffers(next);
     saveProposal(next, myMoney, theirOffers, theirMoney);
   };
 
   const handleRemoveMyOffer = (propId) => {
-    if (!isMyTurn) return;
+    if (!isEditable) return;
     const next = myOffers.filter(id => id !== propId);
     setMyOffers(next);
     saveProposal(next, myMoney, theirOffers, theirMoney);
   };
 
   const handleAddTheirOffer = (propId) => {
-    if (!isMyTurn || theirOffers.includes(propId)) return;
+    if (!isEditable || theirOffers.includes(propId)) return;
     const next = [...theirOffers, propId];
     setTheirOffers(next);
     saveProposal(myOffers, myMoney, next, theirMoney);
   };
 
   const handleRemoveTheirOffer = (propId) => {
-    if (!isMyTurn) return;
+    if (!isEditable) return;
     const next = theirOffers.filter(id => id !== propId);
     setTheirOffers(next);
     saveProposal(myOffers, myMoney, next, theirMoney);
+  };
+
+  const toggleReady = () => {
+    if (!isEditable) return;
+    setTradeReady(activeTrade.id, !myReady).catch(e => addToast(e.message, 'error'));
   };
 
   const getPropData = (id) => propertiesData.find(p => p.name === id);
@@ -228,14 +231,15 @@ export default function TradePanel() {
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/20">🤝</div>
           <h2 className="font-headline font-black text-2xl text-on-surface tracking-tight">Negociação</h2>
           {isAwaitingApproval && <span className="ml-3 px-3 py-1.5 text-xs font-bold bg-amber-500/20 text-amber-600 border border-amber-500/30 rounded-full shadow-sm">Aguardando Banco</span>}
-          {!isAwaitingApproval && (
-            <span className={`ml-3 px-3 py-1.5 text-xs font-bold rounded-full shadow-sm border ${
-              isMyTurn 
-                ? 'bg-primary/20 text-primary border-primary/30' 
-                : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30'
-            }`}>
-              {isMyTurn ? 'Seu Turno' : `Turno de ${them?.name}`}
-            </span>
+          {isEditable && (
+            <div className="ml-3 flex items-center gap-2">
+              <span className={`px-3 py-1.5 text-xs font-bold rounded-full shadow-sm border ${myReady ? 'bg-green-500/20 text-green-600 border-green-500/30' : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30'}`}>
+                Você {myReady ? '✅ Pronto' : '✏️ Editando'}
+              </span>
+              <span className={`px-3 py-1.5 text-xs font-bold rounded-full shadow-sm border ${theirReady ? 'bg-green-500/20 text-green-600 border-green-500/30' : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30'}`}>
+                {them?.name} {theirReady ? '✅ Pronto' : '✏️ Editando'}
+              </span>
+            </div>
           )}
         </div>
         <button onClick={() => cancelTrade(activeTrade.id)} className="p-2 hover:bg-error/10 hover:text-error text-on-surface-variant rounded-full transition-all">
@@ -278,7 +282,7 @@ export default function TradePanel() {
                     setMyMoney(val);
                     saveProposal(myOffers, val, theirOffers, theirMoney);
                   }}
-                  disabled={!isMyTurn}
+                  disabled={!isEditable}
                   className="bg-transparent border-b-2 border-primary/30 w-32 px-2 py-1 pl-9 font-mono font-bold text-lg focus:outline-none focus:border-primary text-on-surface disabled:opacity-50 transition-colors"
                 />
               </div>
@@ -318,7 +322,7 @@ export default function TradePanel() {
                     setTheirMoney(val);
                     saveProposal(myOffers, myMoney, theirOffers, val);
                   }}
-                  disabled={!isMyTurn}
+                  disabled={!isEditable}
                   className="bg-transparent border-b-2 border-secondary/30 w-32 px-2 py-1 pl-9 font-mono font-bold text-lg focus:outline-none focus:border-secondary text-on-surface disabled:opacity-50 transition-colors"
                 />
               </div>
@@ -331,7 +335,7 @@ export default function TradePanel() {
           <div className="sticky top-0 bg-surface/80 backdrop-blur-md pb-3 mb-4 border-b border-outline-variant/30 z-10 rounded-b-xl">
             <h3 className="font-headline font-bold text-lg text-on-surface">Meu Inventário</h3>
             <p className="text-xs text-on-surface-variant font-medium">Saldo: <span className="font-mono text-primary font-bold">{fmt(me?.balance)}</span></p>
-            {isMyTurn && <p className="text-[10px] text-primary/80 mt-1 uppercase tracking-wider font-bold">↑ Toque nas cartas para oferecer</p>}
+            {isEditable && <p className="text-[10px] text-primary/80 mt-1 uppercase tracking-wider font-bold">↑ Toque nas cartas para oferecer</p>}
           </div>
           <div className="flex flex-wrap gap-3">
             <AnimatePresence>
@@ -349,7 +353,7 @@ export default function TradePanel() {
           <div className="sticky top-0 bg-surface/80 backdrop-blur-md pb-3 mb-4 border-b border-outline-variant/30 z-10 rounded-b-xl">
             <h3 className="font-headline font-bold text-lg text-on-surface">Inventário de {them?.name}</h3>
             <p className="text-xs text-on-surface-variant font-medium">Saldo: <span className="font-mono text-secondary font-bold">{fmt(them?.balance)}</span></p>
-            {isMyTurn && <p className="text-[10px] text-secondary/80 mt-1 uppercase tracking-wider font-bold">↑ Toque nas cartas para pedir</p>}
+            {isEditable && <p className="text-[10px] text-secondary/80 mt-1 uppercase tracking-wider font-bold">↑ Toque nas cartas para pedir</p>}
           </div>
           <div className="flex flex-wrap gap-3">
             <AnimatePresence>
@@ -364,28 +368,21 @@ export default function TradePanel() {
       </div>
 
       {/* Footer Actions */}
-      <div className="p-5 border-t border-white/10 bg-surface/80 backdrop-blur-md flex flex-col sm:flex-row justify-end gap-3 shrink-0">
+      <div className="p-5 border-t border-white/10 bg-surface/80 backdrop-blur-md flex flex-col sm:flex-row items-center justify-end gap-3 shrink-0">
         {isAwaitingApproval ? (
           <p className="text-sm font-bold text-amber-600 m-auto">Aguardando aprovação do banco...</p>
-        ) : isMyTurn ? (
-          <>
-            <button 
-              onClick={() => submitTradeProposal(activeTrade.id)} 
-              className="btn-secondary px-6"
-            >
-              Contra Proposta
-            </button>
-            {!hasModified && (
-              <button 
-                onClick={() => acceptTradeProposal(activeTrade.id)} 
-                className="btn-primary px-6 bg-green-600 hover:bg-green-700 text-white"
-              >
-                Aceitar Proposta Atual
-              </button>
-            )}
-          </>
         ) : (
-          <p className="text-sm font-bold text-on-surface-variant m-auto">Aguardando {them?.name}...</p>
+          <>
+            <p className="text-xs text-on-surface-variant sm:mr-auto text-center sm:text-left">
+              {theirReady ? `✅ ${them?.name} já confirmou. Marca a tua confirmação para enviar ao banco.` : 'Edita livremente a proposta a qualquer momento. Confirma quando estiveres de acordo.'}
+            </p>
+            <button 
+              onClick={toggleReady} 
+              className={`px-8 py-3 rounded-xl font-bold transition-all ${myReady ? 'bg-surface-container text-on-surface-variant border border-outline-variant' : 'btn-primary bg-green-600 hover:bg-green-700 text-white'}`}
+            >
+              {myReady ? 'Cancelar Confirmação' : '✅ Estou de Acordo'}
+            </button>
+          </>
         )}
       </div>
       </motion.div>

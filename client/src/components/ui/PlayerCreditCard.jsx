@@ -50,9 +50,14 @@ export default function PlayerCreditCard({ player, isDraggable = false, classNam
           0001 1944 2010 7373
         </div>
         <div className="flex justify-between items-end">
-          <div className="flex flex-col gap-0.5">
-            <div className="text-[8px] font-mono text-white/80">01/44 <span className="mx-0.5">▶</span> 12/10</div>
-            <div className="text-xs font-bold truncate max-w-[100px] uppercase tracking-wide drop-shadow-md">{player?.name || 'JOGADOR'}</div>
+          <div className="flex items-center gap-2">
+            {player?.photo && (
+              <img src={player.photo} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-white/70 shadow-md shrink-0" />
+            )}
+            <div className="flex flex-col gap-0.5">
+              <div className="text-[8px] font-mono text-white/80">01/44 <span className="mx-0.5">▶</span> 12/10</div>
+              <div className="text-xs font-bold truncate max-w-[100px] uppercase tracking-wide drop-shadow-md">{player?.name || 'JOGADOR'}</div>
+            </div>
           </div>
           {/* GoldCard Logo */}
           <div className="flex flex-col items-center justify-center relative mt-1">

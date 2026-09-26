@@ -378,13 +378,13 @@ export function GameProvider({ children }) {
     } catch(e){}
   };
 
-  const createRoom = useCallback(async (playerName, startingBalance, startingPassGo) => {
+  const createRoom = useCallback(async (playerName, startingBalance, startingPassGo, photoUrl) => {
     dispatch({ type: 'SET_CONNECTING', payload: true });
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
       await ensureConnected();
       return new Promise((resolve, reject) => {
-        socket.emit('create_room', { playerName, startingBalance, startingPassGo }, (res) => {
+        socket.emit('create_room', { playerName, startingBalance, startingPassGo, photoUrl }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
@@ -411,7 +411,7 @@ export function GameProvider({ children }) {
     }
   }, [ensureConnected]);
 
-  const joinRoom = useCallback(async (roomCode, playerName, avatar, color, sessionId) => {
+  const joinRoom = useCallback(async (roomCode, playerName, avatar, color, sessionId, photoUrl) => {
     dispatch({ type: 'SET_CONNECTING', payload: true });
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: null });
     try {
@@ -435,7 +435,7 @@ export function GameProvider({ children }) {
       }
 
       return new Promise((resolve, reject) => {
-        socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId: effectiveSessionId }, (res) => {
+        socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId: effectiveSessionId, photoUrl }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
             localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
@@ -607,17 +607,9 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const submitTradeProposal = useCallback((tradeId) =>
+  const setTradeReady = useCallback((tradeId, ready = true) =>
     new Promise((resolve, reject) => {
-      socket.emit('submit_trade_proposal', { roomCode: state.roomCode, tradeId }, (res) =>
-        res.success ? resolve(res) : reject(new Error(res.error))
-      );
-    }),
-  [state.roomCode]);
-
-  const acceptTradeProposal = useCallback((tradeId) =>
-    new Promise((resolve, reject) => {
-      socket.emit('accept_trade_proposal', { roomCode: state.roomCode, tradeId }, (res) =>
+      socket.emit('set_trade_ready', { roomCode: state.roomCode, tradeId, ready }, (res) =>
         res.success ? resolve(res) : reject(new Error(res.error))
       );
     }),
@@ -655,6 +647,14 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
+  const buyHouse = useCallback((propertyId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('buy_house', { roomCode: state.roomCode, propertyId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
   // ── Context Value ─────────────────────────────────────────────────────────────
   const value = {
     ...state,
@@ -677,12 +677,12 @@ export function GameProvider({ children }) {
     requestTrade,
     respondTrade,
     updateTradeProposal,
-    submitTradeProposal,
-    acceptTradeProposal,
+    setTradeReady,
     cancelTrade,
     approveTradeBank,
     rejectTradeBank,
     kickPlayer,
+    buyHouse,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

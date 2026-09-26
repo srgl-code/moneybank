@@ -2,7 +2,7 @@ import React from 'react';
 import PropertyCard from '../PropertyCard.jsx';
 import { propertiesData } from '../../data/properties.js';
 
-export const PropertyTracker = ({ properties = [] }) => {
+export const PropertyTracker = ({ properties = [], houses = {}, onBuyHouse }) => {
   if (!properties || properties.length === 0) {
     return (
       <div className="card p-6 border-dashed border-outline-variant/50 flex flex-col items-center justify-center text-on-surface-variant opacity-80 min-h-[160px]">
@@ -18,9 +18,16 @@ export const PropertyTracker = ({ properties = [] }) => {
       {properties.map(id => {
         const propData = propertiesData.find(p => p.name === id);
         if (!propData) return null;
+        const groupProps = propertiesData.filter(p => p.group === propData.group).map(p => p.name);
+        const canBuildHouse = !!propData.houseCost && groupProps.every(name => properties.includes(name));
         return (
-          <div key={id} className="scale-75 origin-top-left -mb-[120px] -mr-[70px]">
-            <PropertyCard {...propData} />
+          <div key={id} className="scale-75 origin-top-left -mb-[70px] -mr-[70px]">
+            <PropertyCard 
+              {...propData} 
+              houses={houses?.[id] || 0}
+              canBuildHouse={canBuildHouse}
+              onBuyHouse={onBuyHouse ? () => onBuyHouse(id) : undefined}
+            />
           </div>
         );
       })}

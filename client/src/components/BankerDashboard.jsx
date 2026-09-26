@@ -24,7 +24,7 @@ export default function BankerDashboard() {
   const {
     roomCode, gameState, currentPlayer, pendingTransfers, activeTrade,
     adjustBalance, resetBalances, closeRoom, leaveRoom, addToast,
-    approveTransfer, rejectTransfer, passGo, startAuction, assignProperty
+    approveTransfer, rejectTransfer, passGo, startAuction, assignProperty, removeProperty
   } = useGame();
 
   const [tab, setTab] = useState('ranking');
@@ -210,12 +210,12 @@ export default function BankerDashboard() {
                           <div className="flex items-center justify-between gap-3 flex-wrap">
                             <div className="flex items-center gap-2">
                               <span className="flex items-center gap-1.5">
-                                <PinDisplay avatar={req.fromAvatar} size={18} />
+                                <PinDisplay avatar={req.fromAvatar} photo={req.fromPhoto} size={18} />
                                 <span className="text-on-surface font-semibold text-sm">{req.fromName}</span>
                               </span>
                               <span className="text-primary text-xs font-bold">→</span>
                               <span className="flex items-center gap-1.5">
-                                <PinDisplay avatar={req.toAvatar} size={18} />
+                                <PinDisplay avatar={req.toAvatar} photo={req.toPhoto} size={18} />
                                 <span className="text-on-surface font-semibold text-sm">{req.toName}</span>
                               </span>
                             </div>
@@ -267,7 +267,14 @@ export default function BankerDashboard() {
                           <PropertyCard 
                             key={prop.name} 
                             {...prop} 
-                            owner={ownerPlayer ? { name: ownerPlayer.name, avatar: ownerPlayer.avatar, color: ownerPlayer.color } : null}
+                            houses={ownerPlayer?.houses?.[prop.name] || 0}
+                            owner={ownerPlayer ? { name: ownerPlayer.name, avatar: ownerPlayer.avatar, color: ownerPlayer.color, photo: ownerPlayer.photo } : null}
+                            onRemoveOwner={ownerPlayer ? async () => {
+                              try {
+                                await removeProperty(ownerPlayer.id, prop.name);
+                                addToast(`🏚️ Título de ${prop.name} removido de ${ownerPlayer.name}`, 'warning');
+                              } catch (e) { addToast(e.message, 'error'); }
+                            } : undefined}
                           />
                         );
                       })}
@@ -325,7 +332,7 @@ export default function BankerDashboard() {
                     className="flex items-center gap-3 p-3 rounded-2xl border border-outline-variant/50 hover:bg-teal-50 hover:border-teal-200 transition-all text-left group"
                   >
                     <div className="flex items-center justify-center">
-                      <PinDisplay avatar={p.avatar} color={p.color} size={36} />
+                      <PinDisplay avatar={p.avatar} color={p.color} photo={p.photo} size={36} />
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-bold text-on-surface">{p.name}</p>
@@ -377,7 +384,7 @@ export default function BankerDashboard() {
                     className="flex items-center gap-3 p-3 rounded-2xl border border-outline-variant/50 hover:bg-error/5 hover:border-error/20 transition-all text-left group"
                   >
                     <div className="flex items-center justify-center">
-                      <PinDisplay avatar={p.avatar} color={p.color} size={36} />
+                      <PinDisplay avatar={p.avatar} color={p.color} photo={p.photo} size={36} />
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-bold text-on-surface">{p.name}</p>

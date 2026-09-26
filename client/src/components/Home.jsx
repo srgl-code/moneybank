@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, LogIn, PlusCircle, History, AlertCircle, Settings2, Wallet, Flag, User, Clipboard } from 'lucide-react';
+import { Loader2, LogIn, PlusCircle, History, AlertCircle, Settings2, Wallet, Flag, User, Clipboard, Camera, X } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
 import { PIN_OPTIONS, PinSVG, CUSTOM_PIN_ID, PinDisplay } from './PinIcon.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
 import PageTransition from './ui/PageTransition.jsx';
 import { GameModeSelector } from './features/GameModeSelector.jsx';
 import { RecentRooms } from './features/RecentRooms.jsx';
+import { resizeImageToDataUrl } from '../utils/image.js';
 
 const PRESETS = {
   classic: 1500,
@@ -32,6 +33,45 @@ const tabOptions = [
   },
 ];
 
+function PhotoPicker({ photoUrl, onSelect, onClear, error, inputId }) {
+  return (
+    <section className="p-4 rounded-2xl bg-surface-container/30 border border-outline-variant/10">
+      <label className="flex items-center gap-2 mb-3 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
+        <Camera className="w-3 h-3" />
+        Foto de Perfil (opcional)
+      </label>
+      <div className="flex items-center gap-4">
+        <label
+          htmlFor={inputId}
+          className="relative w-16 h-16 rounded-full border-2 border-dashed border-outline-variant/50 flex items-center justify-center cursor-pointer overflow-hidden bg-surface hover:border-primary/50 transition-colors shrink-0"
+        >
+          {photoUrl ? (
+            <img src={photoUrl} alt="Pré-visualização" className="w-full h-full object-cover" />
+          ) : (
+            <Camera className="w-5 h-5 text-on-surface-variant/60" />
+          )}
+        </label>
+        <input id={inputId} type="file" accept="image/*" onChange={onSelect} className="hidden" />
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] text-on-surface-variant leading-snug">
+            A foto aparece junto ao teu pino para os outros jogadores te identificarem.
+          </p>
+          {photoUrl && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="mt-1 flex items-center gap-1 text-[10px] font-bold text-error hover:underline"
+            >
+              <X className="w-3 h-3" /> Remover foto
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <p className="text-[10px] text-error font-bold mt-2">{error}</p>}
+    </section>
+  );
+}
+
 export default function Home() {
   const { createRoom, joinRoom, isConnecting, connectionError } = useGame();
   const [mode, setMode] = useState('join');
@@ -46,6 +86,21 @@ export default function Home() {
   const [avatar, setAvatar] = useState(PIN_OPTIONS[0].id);
   const [playerColor, setPlayerColor] = useState(PIN_OPTIONS[0].color);
   const [customColor, setCustomColor] = useState('#ef4444');
+  const [photoUrl, setPhotoUrl] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoError('');
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setPhotoUrl(dataUrl);
+    } catch (err) {
+      setPhotoError(err.message);
+    }
+  };
 
   const selectPin = (pin) => { setAvatar(pin.id); setPlayerColor(pin.color); };
   const isCustom = avatar === CUSTOM_PIN_ID;
@@ -58,7 +113,7 @@ export default function Home() {
     const bal = gameMode === 'custom' ? parseInt(customBal, 10) : PRESETS[gameMode];
     if (!bal || bal < 100 || bal > 10_000_000) return setErr('Saldo entre 100 e 10.000.000.');
     const go = parseInt(passGoAmt, 10) || 200;
-    try { await createRoom(name, bal, go); } catch (e) { setErr(e.message); }
+    try { await createRoom(name, bal, go, photoUrl); } catch (e) { setErr(e.message); }
   };
 
   const handleJoin = async (e) => {
@@ -70,7 +125,7 @@ export default function Home() {
     if (!name) return setErr('Insere o teu nome.');
     const effectiveAvatar = isCustom ? CUSTOM_PIN_ID : avatar;
     const effectiveColor = isCustom ? customColor : playerColor;
-    try { await joinRoom(code, name, effectiveAvatar, effectiveColor); } catch (e) { setErr(e.message); }
+    try { await joinRoom(code, name, effectiveAvatar, effectiveColor, undefined, photoUrl); } catch (e) { setErr(e.message); }
   };
 
   const handleRejoin = async (code, sessionId) => {
@@ -166,6 +221,14 @@ export default function Home() {
                       className="field glow-input h-14 text-base" autoComplete="off" autoFocus
                     />
                   </section>
+
+                  <PhotoPicker
+                    photoUrl={photoUrl}
+                    onSelect={handlePhotoSelect}
+                    onClear={() => setPhotoUrl(null)}
+                    error={photoError}
+                    inputId="photo-create"
+                  />
 
                   <section className="p-4 rounded-2xl bg-surface-container/30 border border-outline-variant/10">
                     <label className="flex items-center gap-2 mb-4 text-[10px] font-black uppercase tracking-widest text-on-surface-variant">
@@ -309,6 +372,14 @@ export default function Home() {
                       className="field glow-input" autoComplete="off"
                     />
                   </div>
+
+                  <PhotoPicker
+                    photoUrl={photoUrl}
+                    onSelect={handlePhotoSelect}
+                    onClear={() => setPhotoUrl(null)}
+                    error={photoError}
+                    inputId="photo-join"
+                  />
 
                   <div>
                     <label className="field-label">Escolhe o teu pino</label>

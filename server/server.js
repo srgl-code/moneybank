@@ -6,6 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const { propertiesData } = require('./data/properties.js');
 
 // ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
@@ -28,7 +29,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: Object.keys(ro
 
 // ─── In-memory Store ──────────────────────────────────────────────────────────
 /**
- * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null, properties: string[], balanceHistory: number[] }} Player
+ * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null, photo: string|null, properties: string[], houses: Record<string, number>, balanceHistory: number[] }} Player
  * @typedef {{ roomCode: string, bankerId: string, players: Player[], transactionHistory: object[], pendingTransfers: object[], startingBalance: number, status: string, createdAt: Date }} Room
  * @type {Record<string, Room>}
  */
@@ -53,6 +54,13 @@ function sanitizeAmount(raw) {
 function sanitizeString(raw, maxLen = 50) {
   if (!raw || typeof raw !== 'string') return null;
   return raw.trim().slice(0, maxLen);
+}
+
+function sanitizePhoto(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(raw)) return null;
+  if (raw.length > 150_000) return null; // ~110KB decoded, keeps sockets/memory light
+  return raw;
 }
 
 function recordBalanceHistory(player) {
@@ -129,7 +137,7 @@ io.on('connection', (socket) => {
   console.log(`[+] connect   ${socket.id}`);
 
   // ── create_room ─────────────────────────────────────────────────────────────
-  socket.on('create_room', ({ playerName, startingBalance, startingPassGo } = {}, callback) => {
+  socket.on('create_room', ({ playerName, startingBalance, startingPassGo, photoUrl } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const safeName = sanitizeString(playerName, 20);
@@ -159,7 +167,9 @@ io.on('connection', (socket) => {
         balance: 0,       // Banco tem saldo infinito – não rastreado
         isBanker: true,
         avatar: '🏦',
+        photo: sanitizePhoto(photoUrl),
         properties: [],
+        houses: {},
         balanceHistory: [],
       };
 
@@ -191,7 +201,7 @@ io.on('connection', (socket) => {
   });
 
   // ── join_room ────────────────────────────────────────────────────────────────
-  socket.on('join_room', ({ roomCode, playerName, avatar, color, sessionId } = {}, callback) => {
+  socket.on('join_room', ({ roomCode, playerName, avatar, color, sessionId, photoUrl } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const code = sanitizeString(roomCode, 6)?.toUpperCase();
@@ -206,6 +216,7 @@ io.on('connection', (socket) => {
       const safeName = sanitizeString(playerName, 20);
       const safeAvatar = sanitizeString(avatar, 4);
       const safeColor = sanitizeString(color, 10);
+      const safePhoto = sanitizePhoto(photoUrl);
 
       // Helper to update socket IDs in transfers and trades
       const updateSocketReferences = (oldSocketId, newSocketId) => {
@@ -218,7 +229,6 @@ io.on('connection', (socket) => {
           room.trades.forEach((trade) => {
             if (trade.initiatorId === oldSocketId) trade.initiatorId = newSocketId;
             if (trade.receiverId === oldSocketId) trade.receiverId = newSocketId;
-            if (trade.currentTurn === oldSocketId) trade.currentTurn = newSocketId;
           });
         }
       };
@@ -232,6 +242,7 @@ io.on('connection', (socket) => {
           if (existing.isBanker) room.bankerId = socket.id;
           if (safeAvatar) existing.avatar = safeAvatar;
           if (safeColor) existing.color = safeColor;
+          if (safePhoto) existing.photo = safePhoto;
           updateSocketReferences(oldSocketId, socket.id);
 
           socket.join(code);
@@ -263,6 +274,7 @@ io.on('connection', (socket) => {
           if (existingByName.isBanker) room.bankerId = socket.id;
           if (safeAvatar) existingByName.avatar = safeAvatar;
           if (safeColor) existingByName.color = safeColor;
+          if (safePhoto) existingByName.photo = safePhoto;
           updateSocketReferences(oldSocketId, socket.id);
 
           socket.join(code);
@@ -301,7 +313,9 @@ io.on('connection', (socket) => {
         isBanker: false,
         avatar: safeAvatar || '👤',
         color: safeColor || null,
+        photo: safePhoto,
         properties: [],
+        houses: {},
         balanceHistory: [room.startingBalance],
       };
 
@@ -536,10 +550,12 @@ io.on('connection', (socket) => {
         fromName: sender.isBanker ? 'Banco' : sender.name,
         fromAvatar: sender.isBanker ? '🏦' : sender.avatar,
         fromColor: sender.color || null,
+        fromPhoto: sender.isBanker ? null : (sender.photo || null),
         toId,
         toName: receiver.isBanker ? 'Banco' : receiver.name,
         toAvatar: receiver.isBanker ? '🏦' : receiver.avatar,
         toColor: receiver.color || null,
+        toPhoto: receiver.isBanker ? null : (receiver.photo || null),
         amount: amt,
         reason: safeReason,
         metadata: metadata || null,
@@ -841,6 +857,68 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── buy_house (Player only — requires full color-group monopoly) ────────────
+  socket.on('buy_house', ({ roomCode, propertyId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+
+      const player = room.players.find(p => p.id === socket.id);
+      if (!player || player.isBanker) return callback({ success: false, error: 'Ação inválida' });
+
+      const propData = propertiesData.find(p => p.name === propertyId);
+      if (!propData) return callback({ success: false, error: 'Propriedade inválida' });
+      if (!propData.houseCost) return callback({ success: false, error: 'Este grupo não permite construção de casas' });
+
+      if (!player.properties || !player.properties.includes(propertyId)) {
+        return callback({ success: false, error: 'Você não possui este imóvel' });
+      }
+
+      const groupProps = propertiesData.filter(p => p.group === propData.group).map(p => p.name);
+      const ownsFullGroup = groupProps.every(name => player.properties.includes(name));
+      if (!ownsFullGroup) {
+        return callback({ success: false, error: 'É preciso possuir o conjunto completo desta cor para construir' });
+      }
+
+      if (!player.houses) player.houses = {};
+      const current = player.houses[propertyId] || 0;
+      if (current >= 5) return callback({ success: false, error: 'Este imóvel já tem hotel' });
+
+      const cost = current === 4 ? (propData.hotelCost || propData.houseCost) : propData.houseCost;
+      if (player.balance < cost) {
+        return callback({ success: false, error: `Saldo insuficiente (custa M$${cost.toLocaleString('pt-BR')})` });
+      }
+
+      player.balance -= cost;
+      recordBalanceHistory(player);
+      player.houses[propertyId] = current + 1;
+      const isHotel = player.houses[propertyId] === 5;
+
+      room.transactionHistory.push({
+        id: uuidv4(),
+        time: new Date().toISOString(),
+        fromName: player.name,
+        toName: 'Banco',
+        amount: cost,
+        type: 'debit',
+        description: `${player.name} construiu ${isHotel ? 'um Hotel' : 'uma Casa'} em ${propertyId} (M$${cost.toLocaleString('pt-BR')})`,
+      });
+      trimHistory(room);
+
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('game_notification', {
+        type: 'success',
+        message: `🏠 ${player.name} construiu ${isHotel ? 'um Hotel' : 'uma Casa'} em ${propertyId}!`,
+      });
+
+      callback({ success: true, houses: player.houses[propertyId] });
+    } catch (err) {
+      console.error('[buy_house]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
   // ── request_trade ────────────────────────────────────────────────────────────
   socket.on('request_trade', ({ roomCode, toId } = {}, callback) => {
     if (typeof callback !== 'function') return;
@@ -863,7 +941,8 @@ io.on('connection', (socket) => {
         initiatorName: sender.name,
         receiverName: receiver.name,
         status: 'requested',
-        currentTurn: sender.id,
+        initiatorReady: false,
+        receiverReady: false,
         proposal: {
           initiatorOffers: [],
           initiatorMoney: 0,
@@ -913,7 +992,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── update_trade_proposal ────────────────────────────────────────────────────
+  // ── update_trade_proposal (either participant, any time — live/simultaneous) ─
   socket.on('update_trade_proposal', ({ roomCode, tradeId, proposal } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
@@ -923,12 +1002,17 @@ io.on('connection', (socket) => {
       const trade = room.trades.find(t => t.id === tradeId);
       if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
       
-      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
+      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
+        return callback({ success: false, error: 'Sem permissão' });
+      }
       
       trade.proposal = proposal;
+      // Any change to the proposal invalidates previous "ready" confirmations
+      trade.initiatorReady = false;
+      trade.receiverReady = false;
       
-      const otherId = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
-      io.to(otherId).emit('trade_proposal_updated', trade);
+      io.to(trade.initiatorId).emit('trade_proposal_updated', trade);
+      io.to(trade.receiverId).emit('trade_proposal_updated', trade);
       
       io.in(roomCode).emit('update_game_state', getRoomState(room));
       callback({ success: true });
@@ -938,8 +1022,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── submit_trade_proposal ────────────────────────────────────────────────────
-  socket.on('submit_trade_proposal', ({ roomCode, tradeId } = {}, callback) => {
+  // ── set_trade_ready (either participant marks their side as agreed) ─────────
+  socket.on('set_trade_ready', ({ roomCode, tradeId, ready = true } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const room = rooms[roomCode];
@@ -947,44 +1031,30 @@ io.on('connection', (socket) => {
       
       const trade = room.trades.find(t => t.id === tradeId);
       if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
-      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
+      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
+        return callback({ success: false, error: 'Sem permissão' });
+      }
       
-      trade.currentTurn = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
+      if (socket.id === trade.initiatorId) trade.initiatorReady = !!ready;
+      else trade.receiverReady = !!ready;
       
-      io.to(trade.initiatorId).emit('trade_proposal_received', trade);
-      io.to(trade.receiverId).emit('trade_proposal_received', trade);
+      if (trade.initiatorReady && trade.receiverReady) {
+        trade.status = 'banker_approval';
+        io.to(trade.initiatorId).emit('trade_approval_request', trade);
+        io.to(trade.receiverId).emit('trade_approval_request', trade);
+        if (room.bankerId) {
+          io.to(room.bankerId).emit('trade_approval_request', trade);
+          io.to(room.bankerId).emit('game_notification', { type: 'info', message: 'Nova negociação pendente de aprovação!' });
+        }
+      } else {
+        io.to(trade.initiatorId).emit('trade_proposal_updated', trade);
+        io.to(trade.receiverId).emit('trade_proposal_updated', trade);
+      }
       
       io.in(roomCode).emit('update_game_state', getRoomState(room));
       callback({ success: true });
     } catch (err) {
-      console.error('[submit_trade_proposal]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── accept_trade_proposal ────────────────────────────────────────────────────
-  socket.on('accept_trade_proposal', ({ roomCode, tradeId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const trade = room.trades.find(t => t.id === tradeId);
-      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
-      if (socket.id !== trade.currentTurn) return callback({ success: false, error: 'Não é o seu turno' });
-      
-      trade.status = 'banker_approval';
-      
-      io.to(trade.initiatorId).emit('trade_approval_request', trade);
-      io.to(trade.receiverId).emit('trade_approval_request', trade);
-      if (room.bankerId) io.to(room.bankerId).emit('trade_approval_request', trade);
-      
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.to(room.bankerId).emit('game_notification', { type: 'info', message: 'Nova negociação pendente de aprovação!' });
-      
-      callback({ success: true });
-    } catch (err) {
-      console.error('[accept_trade_proposal]', err);
+      console.error('[set_trade_ready]', err);
       callback({ success: false, error: 'Erro interno' });
     }
   });

@@ -21,7 +21,7 @@ import TradeRequestModal from './TradeRequestModal.jsx';
 import { timeAgo } from '../utils/format.js';
 
 export default function PlayerDashboard() {
-  const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
+  const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, buyHouse, addToast } = useGame();
   const [tab, setTab] = useState('ledger');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [openBuy, setOpenBuy] = useState(false);
@@ -49,6 +49,15 @@ export default function PlayerDashboard() {
     try {
       await requestTransfer(banker.id, property.totalValue, `Comprar: ${property.name}`, { propertyId: property.name });
       addToast(`Solicitação para comprar ${property.name} enviada ao bancário!`, 'success');
+    } catch (e) {
+      addToast(e.message, 'error');
+    }
+  };
+
+  const handleBuyHouse = async (propertyId) => {
+    try {
+      await buyHouse(propertyId);
+      addToast(`🏠 Construção concluída em ${propertyId}!`, 'success');
     } catch (e) {
       addToast(e.message, 'error');
     }
@@ -139,7 +148,7 @@ export default function PlayerDashboard() {
               </button>
             </div>
           </div>
-          <PropertyTracker properties={currentPlayer?.properties || []} />
+          <PropertyTracker properties={currentPlayer?.properties || []} houses={currentPlayer?.houses || {}} onBuyHouse={handleBuyHouse} />
         </motion.section>
 
         {/* 3-Tab Content Area */}

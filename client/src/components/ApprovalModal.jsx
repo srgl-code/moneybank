@@ -70,14 +70,16 @@ export default function ApprovalModal({ req, isBankTransaction, onApprove, onRej
     id: req.fromId,
     name: req.fromName,
     avatar: req.fromAvatar,
-    color: req.fromColor
+    color: req.fromColor,
+    photo: req.fromPhoto
   };
 
   const receiverPlayer = !isBankTransaction && req.toId ? {
     id: req.toId,
     name: req.toName,
     avatar: req.toAvatar,
-    color: req.toColor
+    color: req.toColor,
+    photo: req.toPhoto
   } : null;
 
   // State for slots
@@ -186,9 +188,9 @@ export default function ApprovalModal({ req, isBankTransaction, onApprove, onRej
             {req.reason && <div className="text-[#166534] text-xs font-bold uppercase tracking-wider mb-2">"{req.reason}"</div>}
             
             <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-[#166534]/20 text-xs text-[#166534] font-bold">
-              <span className="flex items-center gap-1"><PinDisplay avatar={req.fromAvatar} size={14}/> {req.fromName}</span>
+              <span className="flex items-center gap-1"><PinDisplay avatar={req.fromAvatar} photo={req.fromPhoto} size={14}/> {req.fromName}</span>
               <ArrowRight className="w-3 h-3" />
-              <span className="flex items-center gap-1">{receiverPlayer ? <><PinDisplay avatar={req.toAvatar} size={14}/> {req.toName}</> : 'Banco'}</span>
+              <span className="flex items-center gap-1">{receiverPlayer ? <><PinDisplay avatar={req.toAvatar} photo={req.toPhoto} size={14}/> {req.toName}</> : 'Banco'}</span>
             </div>
           </div>
 

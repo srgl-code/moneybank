@@ -126,7 +126,7 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
                     `}
                   >
                     <div className="flex-shrink-0 w-6 flex items-center justify-center">
-                      <PinDisplay avatar={p.avatar} size={20} />
+                      <PinDisplay avatar={p.avatar} photo={p.photo} size={20} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-on-surface truncate">{p.name}</div>
