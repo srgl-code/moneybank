@@ -101,17 +101,23 @@ export default function RankingList({ players, myId, isBanker }) {
                 </div>
 
                 {/* Avatar */}
-                <div className={`
-                  w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center border
-                  ${isFirst
-                    ? 'bg-white border-amber-200 shadow'
-                    : isMe
-                      ? 'bg-white border-teal-200'
-                      : 'bg-surface-container border-outline-variant/50'
-                  }
-                `}>
-                  <PinDisplay avatar={p.avatar} color={p.color} photo={p.photo} size={22} />
-                </div>
+                {p.photo ? (
+                  <div className="w-10 h-10 flex-shrink-0">
+                    <PinDisplay avatar={p.avatar} color={p.color} photo={p.photo} size={40} />
+                  </div>
+                ) : (
+                  <div className={`
+                    w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center border
+                    ${isFirst
+                      ? 'bg-white border-amber-200 shadow'
+                      : isMe
+                        ? 'bg-white border-teal-200'
+                        : 'bg-surface-container border-outline-variant/50'
+                    }
+                  `}>
+                    <PinDisplay avatar={p.avatar} color={p.color} size={22} />
+                  </div>
+                )}
 
                 {/* Name + label */}
                 <div className="flex-1 min-w-0">
