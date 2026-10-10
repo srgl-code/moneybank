@@ -28,6 +28,7 @@ export default function PropertyCard({
   owner, // { name, avatar, color, photo }
   houses = 0, // 0-4 houses, 5 = hotel
   canBuildHouse = false,
+  buildPending = false,
   onBuyHouse,
   onRemoveOwner
 }) {
@@ -131,10 +132,16 @@ export default function PropertyCard({
           <button
             type="button"
             onClick={onBuyHouse}
-            disabled={!canBuildHouse || isHotel}
-            className="w-full mt-4 py-2 rounded-lg text-sm font-bold bg-primary text-on-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+            disabled={!canBuildHouse || isHotel || buildPending}
+            className="w-full mt-4 py-2.5 rounded-lg text-sm font-black uppercase tracking-wider bg-primary text-on-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 shadow-sm active:scale-95 transition-all"
           >
-            {isHotel ? '🏨 Hotel Construído' : canBuildHouse ? `🏠 Construir (M$ ${(houses === 4 ? (hotelCost || houseCost) : houseCost).toLocaleString('pt-BR')})` : '🔒 Precisa do conjunto completo'}
+            {buildPending
+              ? '⏳ Pendente de aprovação'
+              : isHotel
+                ? '🏨 Hotel Concluído'
+                : !canBuildHouse
+                  ? '🔒 Complete o grupo para construir'
+                  : `🏠 Comprar ${houses === 4 ? 'hotel' : 'casas'} (M$ ${(houses === 4 ? (hotelCost || houseCost) : houseCost).toLocaleString('pt-BR')})`}
           </button>
         )}
 

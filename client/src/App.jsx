@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { GameProvider, useGame } from './context/GameContext.jsx';
-import Home from './components/Home.jsx';
-import BankerDashboard from './components/BankerDashboard.jsx';
-import PlayerDashboard from './components/PlayerDashboard.jsx';
 import Toast from './components/Toast.jsx';
+
+const Home = lazy(() => import('./components/Home.jsx'));
+const BankerDashboard = lazy(() => import('./components/BankerDashboard.jsx'));
+const PlayerDashboard = lazy(() => import('./components/PlayerDashboard.jsx'));
 
 function AppContent() {
   const { screen } = useGame();
@@ -12,11 +13,13 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-surface">
       <Toast />
-      <AnimatePresence mode="wait">
-        {screen === 'home' && <Home key="home" />}
-        {screen === 'banker' && <BankerDashboard key="banker" />}
-        {screen === 'player' && <PlayerDashboard key="player" />}
-      </AnimatePresence>
+      <Suspense fallback={<div className="min-h-screen bg-surface" />}>
+        <AnimatePresence mode="wait">
+          {screen === 'home' && <Home key="home" />}
+          {screen === 'banker' && <BankerDashboard key="banker" />}
+          {screen === 'player' && <PlayerDashboard key="player" />}
+        </AnimatePresence>
+      </Suspense>
     </div>
   );
 }

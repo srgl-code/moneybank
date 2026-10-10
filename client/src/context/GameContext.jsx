@@ -44,7 +44,11 @@ function reducer(state, action) {
       if (activeTrade) {
         const serverTrade = gameState.trades?.find(t => t.id === activeTrade.id);
         if (serverTrade) {
-          activeTrade = serverTrade;
+          const activeRevision = Number(activeTrade.proposalRevision) || 0;
+          const serverRevision = Number(serverTrade.proposalRevision) || 0;
+          if (serverRevision > activeRevision || serverTrade.status !== activeTrade.status) {
+            activeTrade = serverTrade;
+          }
         } else if (activeTrade.status !== 'requested') {
           // If it's not in the server and not just requested, it might have been resolved/cancelled
           activeTrade = null;
@@ -52,6 +56,7 @@ function reducer(state, action) {
       } else if (gameState.trades) {
         // Auto-pick up an active trade if we don't have one set, but one exists for us
         const relevantTrade = gameState.trades.find(t => {
+          if (t.status === 'requested') return false;
           if (t.initiatorId === state.mySocketId || t.receiverId === state.mySocketId) return true;
           if (isBanker && t.status === 'banker_approval') return true;
           return false;
@@ -131,6 +136,7 @@ const GameContext = createContext(null);
 export function GameProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const toastIdRef = useRef(0);
+  const lastTradeProposalToastRef = useRef('');
 
   // ── Toast helper ─────────────────────────────────────────────────────────────
   const addToast = useCallback((message, type = 'info', duration = 4000) => {
@@ -175,7 +181,11 @@ export function GameProvider({ children }) {
     };
     const onNewTransferRequest = (req) => {
       dispatch({ type: 'ADD_PENDING_TRANSFER', payload: req });
-      addToast(`\u{1F4F3} ${req.fromName} quer pagar M$${Number(req.amount).toLocaleString('pt-BR')} a ${req.toName}`, 'info', 6000);
+      if (req.metadata?.type === 'buy_house') {
+        addToast(`🏠 ${req.fromName} solicitou ${req.metadata.housesToAdd} nível(is) em ${req.metadata.propertyName || req.metadata.propertyId} · M$ ${Number(req.amount).toLocaleString('pt-BR')}`, 'info', 6000);
+      } else {
+        addToast(`\u{1F4F3} ${req.fromName} quer pagar M$${Number(req.amount).toLocaleString('pt-BR')} a ${req.toName}`, 'info', 6000);
+      }
     };
 
     const onNotification = ({ type, message }) => {
@@ -225,6 +235,18 @@ export function GameProvider({ children }) {
     };
     const onTradeProposalUpdated = (trade) => {
       dispatch({ type: 'SET_ACTIVE_TRADE', payload: trade });
+      if (trade.proposalById && trade.proposalById !== socket.id) {
+        const toastKey = `${trade.id}:${trade.proposalById}`;
+        if (lastTradeProposalToastRef.current !== toastKey) {
+          const proposerName = trade.proposalById === trade.initiatorId ? trade.initiatorName : trade.receiverName;
+          const proposal = trade.proposal || {};
+          const offered = [...(proposal.initiatorOffers || []), ...(proposal.receiverOffers || [])];
+          const amounts = [proposal.initiatorMoney, proposal.receiverMoney].filter((amount) => amount > 0);
+          const summary = [...offered.slice(0, 2), ...amounts.map((amount) => `M$ ${Number(amount).toLocaleString('pt-BR')}`)].join(', ');
+          addToast(`Nova proposta de ${proposerName}${summary ? `: ${summary}` : ''}`, 'info', 6000);
+          lastTradeProposalToastRef.current = toastKey;
+        }
+      }
     };
     const onTradeProposalReceived = (trade) => {
       dispatch({ type: 'SET_ACTIVE_TRADE', payload: trade });
@@ -246,14 +268,14 @@ export function GameProvider({ children }) {
       dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
       addToast('❌ O Banco recusou a negociação.', 'error');
     };
-    const onTradeRejected = ({ tradeId }) => {
+    const onTradeRejected = ({ tradeId, playerName }) => {
       dispatch({ type: 'REMOVE_TRADE_REQUEST', payload: tradeId });
       dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
-      addToast('❌ Negociação recusada pelo jogador.', 'warning');
+      addToast(`❌ ${playerName || 'O jogador'} recusou a negociação.`, 'warning');
     };
-    const onTradeCancelled = ({ tradeId }) => {
+    const onTradeCancelled = ({ tradeId, playerName, message }) => {
       dispatch({ type: 'SET_ACTIVE_TRADE', payload: null });
-      addToast('🛑 A negociação foi cancelada.', 'warning');
+      addToast(message || (playerName ? `🛑 ${playerName} encerrou a negociação.` : '🛑 A negociação foi cancelada.'), 'warning');
     };
 
     socket.on('connect',              onConnect);
@@ -591,10 +613,11 @@ export function GameProvider({ children }) {
   [state.roomCode]);
 
   const respondTrade = useCallback((tradeId, accept) => {
-    dispatch({ type: 'REMOVE_TRADE_REQUEST', payload: tradeId });
     return new Promise((resolve, reject) => {
       socket.emit('respond_trade', { roomCode: state.roomCode, tradeId, accept }, (res) =>
-        res.success ? resolve(res) : reject(new Error(res.error))
+        res.success
+          ? (dispatch({ type: 'REMOVE_TRADE_REQUEST', payload: tradeId }), resolve(res))
+          : reject(new Error(res.error))
       );
     });
   }, [state.roomCode]);
@@ -607,9 +630,17 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const setTradeReady = useCallback((tradeId, ready = true) =>
+  const acceptTradeProposal = useCallback((tradeId, proposalRevision) =>
     new Promise((resolve, reject) => {
-      socket.emit('set_trade_ready', { roomCode: state.roomCode, tradeId, ready }, (res) =>
+      socket.emit('accept_trade_proposal', { roomCode: state.roomCode, tradeId, proposalRevision }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const rejectTradeProposal = useCallback((tradeId, proposalRevision) =>
+    new Promise((resolve, reject) => {
+      socket.emit('reject_trade_proposal', { roomCode: state.roomCode, tradeId, proposalRevision }, (res) =>
         res.success ? resolve(res) : reject(new Error(res.error))
       );
     }),
@@ -647,14 +678,6 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const buyHouse = useCallback((propertyId) =>
-    new Promise((resolve, reject) => {
-      socket.emit('buy_house', { roomCode: state.roomCode, propertyId }, (res) =>
-        res.success ? resolve(res) : reject(new Error(res.error))
-      );
-    }),
-  [state.roomCode]);
-
   // ── Context Value ─────────────────────────────────────────────────────────────
   const value = {
     ...state,
@@ -677,12 +700,12 @@ export function GameProvider({ children }) {
     requestTrade,
     respondTrade,
     updateTradeProposal,
-    setTradeReady,
+    acceptTradeProposal,
+    rejectTradeProposal,
     cancelTrade,
     approveTradeBank,
     rejectTradeBank,
     kickPlayer,
-    buyHouse,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

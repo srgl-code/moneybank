@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, RefreshCw, X, Loader2, LogOut } from 'lucide-react';
 import { useGame } from '../context/GameContext.jsx';
@@ -16,7 +16,8 @@ import SegmentedControl from './ui/SegmentedControl.jsx';
 import PropertyCard from './PropertyCard.jsx';
 import { propertiesData } from '../data/properties.js';
 import RankingList from './RankingList.jsx';
-import TradePanel from './TradePanel.jsx';
+
+const TradePanel = lazy(() => import('./TradePanel.jsx'));
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
@@ -222,6 +223,18 @@ export default function BankerDashboard() {
                             <span className="font-headline font-black text-lg text-tertiary balance-text">{fmt(req.amount)}</span>
                           </div>
                           {req.reason && <div className="mt-1.5 text-xs text-on-surface-variant italic">"{req.reason}"</div>}
+                          {req.metadata?.type === 'buy_house' && (
+                            <div className="mt-2 flex flex-col gap-1 text-xs font-bold text-amber-900 bg-amber-100 border border-amber-300 px-3 py-2 rounded-lg">
+                              <span>🏠 {req.fromName} solicita {req.metadata.housesToAdd} nível(is) em {req.metadata.propertyName || req.metadata.propertyId}</span>
+                              <span>Saldo disponível: M$ {Number(players.find((player) => player.id === req.fromId)?.balance || 0).toLocaleString('pt-BR')}</span>
+                              <span>
+                                Unitários: {(req.metadata.unitCosts || []).map((cost, index) =>
+                                  `${req.metadata.currentHouses + index + 1 === 5 ? 'Hotel' : 'Casa'} M$ ${Number(cost).toLocaleString('pt-BR')}`
+                                ).join(' · ')}
+                              </span>
+                              <span>Total solicitado: M$ {Number(req.amount).toLocaleString('pt-BR')}</span>
+                            </div>
+                          )}
                           <div className="mt-3 text-xs text-primary font-bold uppercase tracking-wider">Toca para revisar ▶</div>
                         </motion.button>
                       ))}
@@ -402,6 +415,7 @@ export default function BankerDashboard() {
       {approvalReq && (
         <ApprovalModal
           req={approvalReq}
+          availableBalance={gameState?.players?.find((player) => player.id === approvalReq.fromId)?.balance ?? 0}
           isBankTransaction={
             !approvalReq.toId || 
             approvalReq.toId === 'bank' || 
@@ -414,7 +428,11 @@ export default function BankerDashboard() {
       )}
 
       <AnimatePresence>
-        {activeTrade && <TradePanel />}
+        {activeTrade && (
+          <Suspense fallback={null}>
+            <TradePanel />
+          </Suspense>
+        )}
       </AnimatePresence>
     </PageTransition>
   );

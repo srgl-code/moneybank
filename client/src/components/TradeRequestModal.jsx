@@ -1,14 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useGame } from '../context/GameContext.jsx';
 import { ArrowRightLeft } from 'lucide-react';
 
 export default function TradeRequestModal() {
-  const { tradeRequests, respondTrade } = useGame();
+  const { tradeRequests, respondTrade, addToast } = useGame();
+  const [responding, setResponding] = useState(false);
 
   if (!tradeRequests || tradeRequests.length === 0) return null;
 
   const request = tradeRequests[0];
+
+  const handleRespond = async (accept) => {
+    if (responding) return;
+    setResponding(true);
+    try {
+      await respondTrade(request.id, accept);
+      if (accept) addToast(`Negociação com ${request.initiatorName} iniciada.`, 'success');
+    } catch (error) {
+      addToast(error.message, 'error');
+    } finally {
+      setResponding(false);
+    }
+  };
 
   return (
     <motion.div
@@ -32,14 +46,16 @@ export default function TradeRequestModal() {
 
         <div className="flex flex-col gap-3">
           <button 
-            onClick={() => respondTrade(request.id, true)} 
-            className="w-full btn-primary bg-primary text-on-primary py-3 rounded-xl font-bold transition-transform active:scale-95"
+            onClick={() => handleRespond(true)}
+            disabled={responding}
+            className="w-full btn-primary bg-primary text-on-primary py-3 rounded-xl font-bold transition-transform active:scale-95 disabled:opacity-50"
           >
             Aceitar Negociação
           </button>
           <button 
-            onClick={() => respondTrade(request.id, false)} 
-            className="w-full bg-error/10 text-error hover:bg-error/20 py-3 rounded-xl font-bold transition-all active:scale-95"
+            onClick={() => handleRespond(false)}
+            disabled={responding}
+            className="w-full bg-error/10 text-error hover:bg-error/20 py-3 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
           >
             Recusar
           </button>

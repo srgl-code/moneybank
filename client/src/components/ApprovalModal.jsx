@@ -61,7 +61,7 @@ function SlotZone({ id, label, isDebit, cardPlayer, onRemove, isAnimating }) {
   );
 }
 
-export default function ApprovalModal({ req, isBankTransaction, onApprove, onReject, onClose }) {
+export default function ApprovalModal({ req, isBankTransaction, availableBalance = 0, onApprove, onReject, onClose }) {
   const [busy, setBusy] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
@@ -185,6 +185,21 @@ export default function ApprovalModal({ req, isBankTransaction, onApprove, onRej
             <div className="font-mono text-4xl font-black text-[#15803d] tracking-wider mb-2 drop-shadow-sm">
               {fmt(req.amount)}
             </div>
+            {req.metadata?.type === 'buy_house' && (
+              <div className="bg-amber-500/15 border border-amber-500/40 rounded-lg p-2.5 my-2 text-xs font-bold text-amber-900 flex items-center justify-center gap-2">
+                <span className="text-base">🏠</span>
+                <span>
+                  Construção: <strong>+{req.metadata.housesToAdd} nível(is)</strong> em <strong>{req.metadata.propertyName || req.metadata.propertyId}</strong>
+                </span>
+                <span className="block">Saldo disponível do jogador: M$ {Number(availableBalance).toLocaleString('pt-BR')}</span>
+                <span className="block">
+                  Custo por nível: {(req.metadata.unitCosts || []).map((cost, index) =>
+                    `${req.metadata.currentHouses + index + 1 === 5 ? 'Hotel' : 'Casa'} M$ ${Number(cost).toLocaleString('pt-BR')}`
+                  ).join(' · ')}
+                </span>
+                <span className="block">Total solicitado: M$ {Number(req.amount).toLocaleString('pt-BR')}</span>
+              </div>
+            )}
             {req.reason && <div className="text-[#166534] text-xs font-bold uppercase tracking-wider mb-2">"{req.reason}"</div>}
             
             <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-[#166534]/20 text-xs text-[#166534] font-bold">

@@ -1,15 +1,21 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, Trophy, Shield } from 'lucide-react';
+import { Wallet, Trophy, Shield, Building2 } from 'lucide-react';
 
-const tabs = [
+const playerTabs = [
+  { id: 'ledger',     Icon: Wallet,    label: 'Extrato'  },
+  { id: 'properties', Icon: Building2, label: 'Imóveis'  },
+  { id: 'ranking',    Icon: Trophy,    label: 'Ranking'  },
+];
+
+const bankerTabs = [
   { id: 'ledger',  Icon: Wallet,  label: 'Ledger'  },
   { id: 'ranking', Icon: Trophy,  label: 'Ranking' },
   { id: 'banker',  Icon: Shield,  label: 'Banker'  },
 ];
 
 export default function BottomNav({ activeTab, onTabChange, showBanker = false }) {
-  const visibleTabs = showBanker ? tabs : tabs.filter(t => t.id !== 'banker');
+  const visibleTabs = showBanker ? bankerTabs : playerTabs;
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 w-full z-50 rounded-t-4xl border-t border-outline-variant/15 shadow-nav glass">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGame } from '../context/GameContext.jsx';
@@ -13,21 +13,28 @@ import PageTransition from './ui/PageTransition.jsx';
 import { PinDisplay } from './PinIcon.jsx';
 import { MiniChart } from './features/MiniChart.jsx';
 import { PropertyTracker } from './features/PropertyTracker.jsx';
+import PlayerPropertiesTab from './features/PlayerPropertiesTab.jsx';
+import BuyHouseModal from './BuyHouseModal.jsx';
 import { NotificationCenter } from './features/NotificationCenter.jsx';
 import { QuickActionButton } from './ui/QuickActionButton.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
-import TradePanel from './TradePanel.jsx';
 import TradeRequestModal from './TradeRequestModal.jsx';
 import { timeAgo } from '../utils/format.js';
 
+const TradePanel = lazy(() => import('./TradePanel.jsx'));
+
 export default function PlayerDashboard() {
-  const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, buyHouse, addToast } = useGame();
+  const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
   const [tab, setTab] = useState('ledger');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [openBuy, setOpenBuy] = useState(false);
+  const [selectedPropForHouse, setSelectedPropForHouse] = useState(null);
 
   const all = gameState?.players ?? [];
   const bal = currentPlayer?.balance ?? 0;
+  const pendingHouseRequests = (gameState?.pendingTransfers ?? []).filter((request) =>
+    request.fromId === currentPlayer?.id && request.metadata?.type === 'buy_house'
+  );
   const human = all.filter((p) => !p.isBanker);
   
   // Extract sparkline data
@@ -54,12 +61,37 @@ export default function PlayerDashboard() {
     }
   };
 
-  const handleBuyHouse = async (propertyId) => {
+  const handleRequestHousePurchase = async (property, quantity, totalCost) => {
+    const banker = all.find(p => p.isBanker);
+    if (!banker) {
+      addToast('Bancário não encontrado na sala!', 'error');
+      return;
+    }
+    const currentHouses = currentPlayer?.houses?.[property.name] || 0;
+    const targetHouses = currentHouses + quantity;
+    const isHotel = targetHouses === 5;
+    const houseLabel = isHotel
+      ? (currentHouses === 4 ? '1 Hotel' : `${quantity - 1} casa(s) e 1 Hotel`)
+      : `${quantity} casa(s)`;
+
     try {
-      await buyHouse(propertyId);
-      addToast(`🏠 Construção concluída em ${propertyId}!`, 'success');
+      await requestTransfer(
+        banker.id,
+        totalCost,
+        `Construir ${houseLabel} em ${property.name}`,
+        {
+          type: 'buy_house',
+          propertyId: property.name,
+          propertyName: property.name,
+          housesToAdd: quantity,
+          currentHouses,
+          targetHouses
+        }
+      );
+      addToast(`⏳ Pedido para construir ${houseLabel} enviado ao Banco!`, 'info');
     } catch (e) {
       addToast(e.message, 'error');
+      throw e;
     }
   };
 
@@ -121,49 +153,47 @@ export default function PlayerDashboard() {
             />
             <QuickActionButton 
               icon="🏡" 
-              label="Comprar" 
+              label="Comprar Terreno"
               onClick={() => setOpenBuy(true)} 
               color="orange" 
               className="flex-1"
             />
           </motion.section>
+
+          {/* Quick Properties shortcut bar when not in properties tab */}
+          {tab !== 'properties' && (
+            <motion.div
+              onClick={() => setTab('properties')}
+              whileTap={{ scale: 0.99 }}
+              className="card p-3 px-4 flex items-center justify-between cursor-pointer hover:bg-surface-container-high transition-all border border-primary/20 bg-primary/5 text-xs shadow-xs"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">🏡</span>
+                <span className="font-bold text-on-surface">Minhas Propriedades:</span>
+                <span className="text-primary font-bold">
+                  {currentPlayer?.properties?.length || 0} terrenos possuídos
+                </span>
+              </div>
+              <span className="text-primary font-bold flex items-center gap-1">
+                Ver e Construir Casas →
+              </span>
+            </motion.div>
+          )}
         </div>
 
-        {/* Properties Tracker */}
+        {/* Dedicated 3-Tab Content Area */}
         <motion.section
-          id="property-tracker"
-          className="card p-6 shadow-sm"
+          className="card p-4 sm:p-6 flex flex-col min-h-[500px]"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="flex justify-between items-end mb-4">
-            <h3 className="font-headline font-bold text-lg text-on-surface">Minhas Propriedades</h3>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-label text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
-                {currentPlayer?.properties?.length || 0} posses
-              </span>
-              <button onClick={() => setOpenBuy(true)} className="btn-add text-xs py-1.5 px-3">
-                + Comprar
-              </button>
-            </div>
-          </div>
-          <PropertyTracker properties={currentPlayer?.properties || []} houses={currentPlayer?.houses || {}} onBuyHouse={handleBuyHouse} />
-        </motion.section>
-
-        {/* 3-Tab Content Area */}
-        <motion.section
-          className="card p-6 h-[400px] flex flex-col"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <div className="mb-4">
+          <div className="mb-6">
             <SegmentedControl 
               options={[
                 { value: 'ledger', label: 'Extrato' },
-                { value: 'ranking', label: 'Ranking' },
-                { value: 'alerts', label: 'Alertas' }
+                { value: 'properties', label: `Minhas Propriedades (${currentPlayer?.properties?.length || 0})` },
+                { value: 'ranking', label: 'Ranking' }
               ]} 
               value={tab} 
               onChange={setTab} 
@@ -181,15 +211,20 @@ export default function PlayerDashboard() {
                   />
                 </motion.div>
               )}
+              {tab === 'properties' && (
+                <motion.div key="properties" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <PlayerPropertiesTab
+                    properties={currentPlayer?.properties || []}
+                    houses={currentPlayer?.houses || {}}
+                    pendingHouseRequests={pendingHouseRequests}
+                    onBuyPropertyClick={() => setOpenBuy(true)}
+                    onSelectPropertyForHouse={(prop) => setSelectedPropForHouse(prop)}
+                  />
+                </motion.div>
+              )}
               {tab === 'ranking' && (
                 <motion.div key="ranking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <RankingList players={all} myId={currentPlayer?.id} />
-                </motion.div>
-              )}
-              {tab === 'alerts' && (
-                <motion.div key="alerts" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center h-full text-on-surface-variant opacity-60">
-                  <span className="text-3xl mb-2">📭</span>
-                  <p className="text-sm font-label">Nenhum alerta recente.</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -219,7 +254,23 @@ export default function PlayerDashboard() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeTrade && <TradePanel />}
+        {selectedPropForHouse && (
+          <BuyHouseModal
+            property={selectedPropForHouse}
+            currentHouses={currentPlayer?.houses?.[selectedPropForHouse.name] || 0}
+            playerBalance={currentPlayer?.balance || 0}
+            onConfirm={handleRequestHousePurchase}
+            onClose={() => setSelectedPropForHouse(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeTrade && (
+          <Suspense fallback={null}>
+            <TradePanel />
+          </Suspense>
+        )}
       </AnimatePresence>
 
       <TradeRequestModal />

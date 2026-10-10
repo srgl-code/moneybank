@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { PinDisplay } from './PinIcon.jsx';
 import { useGame } from '../context/GameContext.jsx';
 import { ArrowRightLeft, UserX, Loader2 } from 'lucide-react';
@@ -50,8 +50,7 @@ export default function RankingList({ players, myId, isBanker }) {
   }
 
   return (
-    <LayoutGroup>
-      <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
         <AnimatePresence>
           {sorted.map((p, i) => {
             const isMe = p.id === myId;
@@ -62,15 +61,10 @@ export default function RankingList({ players, myId, isBanker }) {
             return (
               <motion.div
                 key={p.id}
-                layout
-                layoutId={`rank-${p.id}`}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{
-                  layout: { type: 'spring', stiffness: 300, damping: 30 },
-                  opacity: { duration: 0.2 },
-                }}
+                transition={{ opacity: { duration: 0.2 } }}
                 className={`
                   relative flex items-center gap-3 px-4 py-3 rounded-2xl overflow-hidden transition-all
                   ${isFirst
@@ -182,7 +176,6 @@ export default function RankingList({ players, myId, isBanker }) {
             );
           })}
         </AnimatePresence>
-      </div>
-    </LayoutGroup>
+    </div>
   );
 }
