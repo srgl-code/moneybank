@@ -102,10 +102,13 @@ export default function TradePanel() {
   const me = isInitiator ? initiator : receiver;
   const them = isInitiator ? receiver : initiator;
 
-  const isEditable = activeTrade.status === 'active';
+  const isMyTurn = activeTrade.status === 'active' && activeTrade.currentTurnPlayerId === currentPlayer.id;
+  const isEditable = isMyTurn;
   const isAwaitingApproval = activeTrade.status === 'banker_approval';
-  const isMyProposal = activeTrade.proposalById === currentPlayer.id;
-  const isProposalRecipient = !!activeTrade.proposalById && !isMyProposal;
+  const isInitialOfferer = activeTrade.phase === 'BUILDING_INITIAL_OFFER' && currentPlayer.id === activeTrade.initiatorId;
+  const isWaitingInitialOffer = activeTrade.phase === 'BUILDING_INITIAL_OFFER' && !isInitiator;
+  const isMyProposal = activeTrade.proposalById === currentPlayer.id || isInitialOfferer;
+  const isProposalRecipient = isMyTurn && activeTrade.phase === 'WAITING_OFFER_RESPONSE' && activeTrade.proposalById !== currentPlayer.id;
   const hasTradeTerms = (activeTrade.proposal?.initiatorOffers?.length || 0) > 0 ||
     (activeTrade.proposal?.receiverOffers?.length || 0) > 0 ||
     (activeTrade.proposal?.initiatorMoney || 0) > 0 ||
@@ -191,8 +194,8 @@ export default function TradePanel() {
     const hasMoney = activeTrade.proposal.initiatorMoney > 0 || activeTrade.proposal.receiverMoney > 0;
     
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-        <div className={`bg-surface rounded-3xl w-full p-6 sm:p-8 shadow-2xl border border-outline-variant my-8 ${hasMoney ? 'max-w-5xl' : 'max-w-lg'}`}>
+      <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4">
+        <div className={`bg-surface max-h-[94dvh] overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl w-full p-4 sm:p-8 shadow-2xl border border-outline-variant ${hasMoney ? 'max-w-5xl' : 'max-w-lg'}`}>
           <div className="flex items-center gap-3 mb-4 pb-3 border-b border-outline-variant/30">
             <span className="text-2xl">⚖️</span>
             <div>
@@ -294,7 +297,7 @@ export default function TradePanel() {
             </button>
           </div>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
@@ -391,18 +394,11 @@ export default function TradePanel() {
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }} 
-      animate={{ opacity: 1 }} 
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-2 sm:p-4 md:p-6"
+    <div
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-md p-0 sm:p-4 md:p-6"
     >
-      <motion.div 
-        initial={{ scale: 0.95, y: 30 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.95, y: 30 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
-        className="w-full max-w-6xl h-full max-h-[92vh] flex flex-col bg-surface rounded-3xl shadow-2xl overflow-hidden border border-outline-variant/30"
+      <div
+        className="w-full max-w-6xl h-[100dvh] max-h-[100dvh] flex flex-col bg-surface rounded-none sm:h-full sm:max-h-[92dvh] sm:rounded-3xl shadow-2xl overflow-hidden border border-outline-variant/30"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/30 bg-surface-container-high/40 shrink-0">
@@ -422,6 +418,10 @@ export default function TradePanel() {
               <p className="text-[10px] text-on-surface-variant mt-0.5">
                 {isAwaitingApproval
                   ? 'Negociação legada em revisão pelo Banco.'
+                  : isWaitingInitialOffer
+                    ? `Aguardando ${initiator?.name} montar a primeira proposta.`
+                  : isInitialOfferer && !activeTrade.proposalById
+                    ? 'Sua vez de montar e enviar a primeira proposta.'
                   : hasDraftChanges
                     ? 'Alterações ainda não enviadas.'
                     : isMyProposal
@@ -687,6 +687,16 @@ export default function TradePanel() {
 
           </div>
 
+          {mobileTab === 'proposal' && (
+            <section className="md:hidden rounded-2xl border border-outline-variant/50 bg-surface p-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-on-surface-variant mb-2">Resumo da proposta</h3>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="min-w-0"><span className="block text-on-surface-variant">Você entrega</span><span className="block font-bold text-on-surface break-words">{myOffers.length ? myOffers.join(', ') : 'Nenhum terreno'}{myMoney ? ` + ${fmt(myMoney)}` : ''}</span></div>
+                <div className="min-w-0"><span className="block text-on-surface-variant">Você recebe</span><span className="block font-bold text-on-surface break-words">{theirOffers.length ? theirOffers.join(', ') : 'Nenhum terreno'}{theirMoney ? ` + ${fmt(theirMoney)}` : ''}</span></div>
+              </div>
+            </section>
+          )}
+
           {/* Right Column: Inventário de {Them} */}
           <div className={`w-full md:w-[300px] lg:w-[320px] p-4 border-l border-outline-variant/30 flex flex-col bg-surface/50 overflow-hidden ${mobileTab !== 'their_inventory' ? 'hidden md:flex' : 'flex'}`}>
             <div className="pb-3 border-b border-outline-variant/30 shrink-0">
@@ -731,10 +741,14 @@ export default function TradePanel() {
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 sm:p-5 border-t border-outline-variant/30 bg-surface flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+        <div className="p-3 sm:p-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-outline-variant/30 bg-surface flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-on-surface-variant text-center sm:text-left">
             {isAwaitingApproval
               ? <span className="font-bold text-amber-600">⏳ Negociação antiga aguardando o Banco.</span>
+              : isWaitingInitialOffer
+                ? <span>Aguardando {initiator?.name} montar e enviar a proposta inicial.</span>
+              : isInitialOfferer && !activeTrade.proposalById
+                ? <span>Monte os termos iniciais; somente você pode enviar a primeira proposta.</span>
               : hasDraftChanges
                 ? <span>Revise os itens e valores e envie a proposta para o outro jogador.</span>
                 : isMyProposal
@@ -742,7 +756,7 @@ export default function TradePanel() {
                   : <span>Aceite, recuse ou altere os termos para enviar uma contraproposta.</span>}
           </div>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto sm:gap-3">
             <button
               type="button"
               onClick={() => cancelTrade(activeTrade.id)}
@@ -784,7 +798,7 @@ export default function TradePanel() {
           </div>
         </div>
 
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

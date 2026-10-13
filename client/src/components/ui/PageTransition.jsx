@@ -2,20 +2,16 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const pageVariants = {
-  initial: { opacity: 0, y: 20 },
+  initial: { opacity: 0 },
   animate: {
     opacity: 1,
-    y: 0,
     transition: {
-      type: 'spring',
-      stiffness: 100,
-      damping: 15,
-      mass: 0.8,
+      duration: 0.18,
+      ease: 'easeOut',
     },
   },
   exit: {
     opacity: 0,
-    y: -10,
     transition: { duration: 0.2, ease: 'easeIn' },
   },
 };

@@ -36,7 +36,7 @@ export default function PropertyCard({
   const isHotel = houses >= 5;
 
   return (
-    <div className="w-[280px] bg-[#f8fafc] border-2 border-slate-300 rounded-xl overflow-hidden shadow-lg font-sans flex flex-col relative text-slate-800 shrink-0">
+    <div className="w-full max-w-[280px] bg-[#f8fafc] border-2 border-slate-300 rounded-xl overflow-hidden shadow-lg font-sans flex flex-col relative text-slate-800 shrink-0">
       {/* Header */}
       <div 
         className="h-20 flex items-center justify-center border-b-2 border-slate-300 relative px-4"

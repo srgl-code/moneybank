@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { useGame } from '../context/GameContext.jsx';
 import { ArrowRightLeft } from 'lucide-react';
 
@@ -25,15 +24,11 @@ export default function TradeRequestModal() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4"
     >
-      <motion.div
-        initial={{ y: 50, scale: 0.9 }}
-        animate={{ y: 0, scale: 1 }}
-        className="bg-surface rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-outline-variant text-center"
+      <div
+        className="max-h-[92dvh] w-full max-w-sm overflow-y-auto overscroll-contain rounded-t-3xl border border-outline-variant bg-surface p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-center shadow-2xl sm:rounded-3xl sm:p-6"
       >
         <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-4">
           <ArrowRightLeft size={32} />
@@ -60,7 +55,7 @@ export default function TradeRequestModal() {
             Recusar
           </button>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

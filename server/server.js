@@ -4,46 +4,30 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { propertiesData } = require('./data/properties.js');
 const { getConstructionPlan, normalizeTradeProposal, settleTrade } = require('./gameRules.js');
 
-// ─── App Setup ────────────────────────────────────────────────────────────────
 const app = express();
 const httpServer = http.createServer(app);
-
 const IS_PROD = process.env.NODE_ENV === 'production';
 const CLIENT_URL = process.env.CLIENT_URL || (IS_PROD ? '*' : 'http://localhost:5173');
-
 const io = new Server(httpServer, {
-  cors: {
-    origin: IS_PROD ? true : CLIENT_URL,
-    methods: ['GET', 'POST'],
-  },
+  cors: { origin: IS_PROD ? true : CLIENT_URL, methods: ['GET', 'POST'] },
 });
 
 app.use(cors({ origin: IS_PROD ? true : CLIENT_URL }));
 app.use(express.json());
 
+const rooms = {};
 app.get('/health', (_req, res) => res.json({ status: 'ok', rooms: Object.keys(rooms).length }));
 
-// ─── In-memory Store ──────────────────────────────────────────────────────────
-/**
- * @typedef {{ id: string, sessionId: string, name: string, balance: number, isBanker: boolean, avatar: string, color: string|null, photo: string|null, properties: string[], houses: Record<string, number>, balanceHistory: number[] }} Player
- * @typedef {{ roomCode: string, bankerId: string, players: Player[], transactionHistory: object[], pendingTransfers: object[], startingBalance: number, status: string, createdAt: Date }} Room
- * @type {Record<string, Room>}
- */
-const rooms = {};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function generateRoomCode() {
-  // Excludes visually ambiguous chars (0,O,1,I)
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
+  for (let i = 0; i < 6; i += 1) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
 }
 
@@ -51,66 +35,9 @@ function sanitizeAmount(raw) {
   const n = parseInt(raw, 10);
   return Number.isFinite(n) ? n : null;
 }
-
 function sanitizeString(raw, maxLen = 50) {
   if (!raw || typeof raw !== 'string') return null;
   return raw.trim().slice(0, maxLen);
-}
-
-function sanitizePhoto(raw) {
-  if (!raw || typeof raw !== 'string') return null;
-  if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(raw)) return null;
-  if (raw.length > 150_000) return null; // ~110KB decoded, keeps sockets/memory light
-  return raw;
-}
-
-function recordBalanceHistory(player) {
-  if (player.isBanker) return;
-  if (!player.balanceHistory) player.balanceHistory = [];
-  player.balanceHistory.push(player.balance);
-  if (player.balanceHistory.length > 50) {
-    player.balanceHistory.shift();
-  }
-}
-
-function deduplicatePlayers(room) {
-  if (!room || !Array.isArray(room.players)) return;
-  const unique = [];
-  const seenNames = new Map(); // normalizedName -> index in unique
-
-  for (const player of room.players) {
-    if (player.isBanker) {
-      unique.push(player);
-      continue;
-    }
-    const norm = player.name ? player.name.trim().toLowerCase() : '';
-    if (!norm) continue;
-
-    if (seenNames.has(norm)) {
-      const idx = seenNames.get(norm);
-      const existing = unique[idx];
-      // Merge properties
-      const existingProps = new Set(existing.properties || []);
-      (player.properties || []).forEach((p) => existingProps.add(p));
-      existing.properties = Array.from(existingProps);
-
-      // Keep active socket if the duplicate has a valid socket
-      if (player.id && player.id.length > 5 && player.id !== existing.id) {
-        existing.id = player.id;
-      }
-      // If the duplicate had a higher balance, keep it
-      if (player.balance > existing.balance) {
-        existing.balance = player.balance;
-      }
-      if (player.balanceHistory && player.balanceHistory.length > (existing.balanceHistory?.length || 0)) {
-        existing.balanceHistory = player.balanceHistory;
-      }
-    } else {
-      seenNames.set(norm, unique.length);
-      unique.push(player);
-    }
-  }
-  room.players = unique;
 }
 
 /**
@@ -118,47 +45,189 @@ function deduplicatePlayers(room) {
  * Players are already sorted by descending balance for the ranking.
  */
 function getRoomState(room) {
-  deduplicatePlayers(room);
   return {
     roomCode: room.roomCode,
     players: [...room.players]
       .sort((a, b) => b.balance - a.balance)
-      .map(({ sessionId: _s, ...rest }) => rest), // strip internal sessionId from broadcast
+      .map(({ sessionId: _s, ...rest }) => ({ ...rest, connected: !!io.sockets.sockets.get(rest.id) })), // strip internal sessionId from broadcast
     history: room.transactionHistory.slice(-50),
     pendingTransfers: room.pendingTransfers ?? [],
     trades: room.trades ?? [],
+    auction: room.auction ?? null,
     startingBalance: room.startingBalance,
     startingPassGo: room.startingPassGo ?? 200,
     status: room.status,
   };
 }
 
+function reconnectRoomPlayer(room, code, socket, player) {
+  const oldSocketId = player.id;
+  player.id = socket.id;
+  if (player.isBanker) room.bankerId = socket.id;
+  for (const request of room.pendingTransfers) {
+    if (request.fromId === oldSocketId) request.fromId = socket.id;
+    if (request.toId === oldSocketId) request.toId = socket.id;
+  }
+  for (const trade of room.trades || []) {
+    if (trade.initiatorId === oldSocketId) trade.initiatorId = socket.id;
+    if (trade.recipientId === oldSocketId) trade.recipientId = socket.id;
+    if (trade.receiverId === oldSocketId) trade.receiverId = socket.id;
+    if (trade.proposalById === oldSocketId) trade.proposalById = socket.id;
+    if (trade.currentTurnPlayerId === oldSocketId) trade.currentTurnPlayerId = socket.id;
+  }
+  if (room.auction) {
+    room.auction.participantIds = room.auction.participantIds.map((id) => id === oldSocketId ? socket.id : id);
+    room.auction.passedPlayerIds = room.auction.passedPlayerIds.map((id) => id === oldSocketId ? socket.id : id);
+    room.auction.bids.forEach((bid) => { if (bid.playerId === oldSocketId) bid.playerId = socket.id; });
+    if (room.auction.currentTurnPlayerId === oldSocketId) room.auction.currentTurnPlayerId = socket.id;
+    if (room.auction.highestBidderId === oldSocketId) room.auction.highestBidderId = socket.id;
+  }
+  socket.join(code);
+  socket.data.roomCode = code;
+  socket.data.sessionId = player.sessionId;
+  io.in(code).emit('player_rejoined', { playerName: player.name });
+  io.in(code).emit('update_game_state', getRoomState(room));
+  return { success: true, roomCode: code, sessionId: player.sessionId, player, gameState: getRoomState(room) };
+}
+
+function recordBalanceHistory(player) {
+  if (player.isBanker) return;
+  if (!Array.isArray(player.balanceHistory)) player.balanceHistory = [];
+  player.balanceHistory.push(player.balance);
+  if (player.balanceHistory.length > 50) player.balanceHistory.shift();
+}
+
+function availableBalance(room, player, excludeRequestId = null) {
+  const reservedBid = room.auction?.status === 'active' && room.auction.highestBidderId === player.id
+    ? room.auction.currentBid
+    : 0;
+  const reservedRequests = room.pendingTransfers
+    .filter((request) => request.requestId !== excludeRequestId && request.fromId === player.id)
+    .reduce((sum, request) => sum + request.amount, 0);
+  return Math.max(0, player.balance - reservedBid - reservedRequests);
+}
+
+function auctionBidLimit(room, player) {
+  const reservedRequests = room.pendingTransfers
+    .filter((request) => request.fromId === player.id)
+    .reduce((sum, request) => sum + request.amount, 0);
+  return Math.max(0, player.balance - reservedRequests);
+}
+
+function recordEntry(room, entry) {
+  room.transactionHistory.push(entry);
+  trimHistory(room);
+}
+
 function applyTradeSettlement(room, trade) {
+  const normalized = normalizeTradeProposal(room, trade, trade.proposal, propertiesData);
+  if (normalized.error) return normalized;
+  if (normalized.proposal.initiatorMoney > availableBalance(room, normalized.initiator) ||
+      normalized.proposal.receiverMoney > availableBalance(room, normalized.receiver)) {
+    return { error: 'Saldo insuficiente: parte do saldo está reservada para um leilão ou outra operação.' };
+  }
+
   const result = settleTrade(room, trade, propertiesData, recordBalanceHistory);
   if (result.error) return result;
-
   const { proposal, initiator, receiver } = result;
-  const totalCash = proposal.initiatorMoney + proposal.receiverMoney;
-  const exchanged = [
-    ...proposal.initiatorOffers.map((propertyId) => `${initiator.name} → ${receiver.name}: ${propertyId}`),
-    ...proposal.receiverOffers.map((propertyId) => `${receiver.name} → ${initiator.name}: ${propertyId}`),
-    proposal.initiatorMoney ? `${initiator.name} paga M$${proposal.initiatorMoney.toLocaleString('pt-BR')} a ${receiver.name}` : '',
-    proposal.receiverMoney ? `${receiver.name} paga M$${proposal.receiverMoney.toLocaleString('pt-BR')} a ${initiator.name}` : '',
-  ].filter(Boolean).join('; ');
-
-  room.transactionHistory.push({
+  const receivedByInitiator = proposal.receiverOffers.join(', ') || 'nenhuma propriedade';
+  const receivedByReceiver = proposal.initiatorOffers.join(', ') || 'nenhuma propriedade';
+  const details = [
+    `${initiator.name} entregou ${proposal.initiatorOffers.join(', ') || 'nenhuma propriedade'}${proposal.initiatorMoney ? ` + M$${proposal.initiatorMoney.toLocaleString('pt-BR')}` : ''}`,
+    `${receiver.name} entregou ${proposal.receiverOffers.join(', ') || 'nenhuma propriedade'}${proposal.receiverMoney ? ` + M$${proposal.receiverMoney.toLocaleString('pt-BR')}` : ''}`,
+  ].join('; ');
+  recordEntry(room, {
     id: uuidv4(),
     time: new Date().toISOString(),
     fromId: initiator.id,
     toId: receiver.id,
     fromName: initiator.name,
     toName: receiver.name,
-    amount: totalCash,
-    type: 'transfer',
-    description: `Negociação concluída: ${exchanged}`,
+    amount: proposal.initiatorMoney + proposal.receiverMoney,
+    type: 'trade',
+    details: { receivedByInitiator, receivedByReceiver, ...proposal },
+    description: `Negociação entre ${initiator.name} e ${receiver.name}: ${details}`,
   });
-  trimHistory(room);
   return result;
+}
+
+function currentAuctionOwner(room, propertyId) {
+  return room.players.find((player) => !player.isBanker && player.properties?.includes(propertyId));
+}
+
+function chooseAuctionLeader(room) {
+  const auction = room.auction;
+  const passed = new Set(auction.passedPlayerIds);
+  const highest = auction.bids
+    .filter((bid) => !passed.has(bid.playerId) && room.players.some((player) => player.id === bid.playerId))
+    .sort((left, right) => right.amount - left.amount || Date.parse(left.time) - Date.parse(right.time))[0];
+  auction.highestBidderId = highest?.playerId || null;
+  auction.currentBid = highest?.amount || 0;
+}
+
+function advanceAuction(room, previousPlayerId) {
+  const auction = room.auction;
+  if (!auction || auction.status !== 'active') return;
+  const activePlayers = auction.participantIds.filter((id) => !auction.passedPlayerIds.includes(id));
+  if (activePlayers.length === 0 || (activePlayers.length === 1 && activePlayers[0] === auction.highestBidderId)) {
+    finishAuction(room);
+    return;
+  }
+
+  const previousIndex = auction.participantIds.indexOf(previousPlayerId);
+  for (let step = 1; step <= auction.participantIds.length; step += 1) {
+    const candidate = auction.participantIds[(previousIndex + step + auction.participantIds.length) % auction.participantIds.length];
+    if (activePlayers.includes(candidate)) {
+      auction.currentTurnPlayerId = candidate;
+      return;
+    }
+  }
+}
+
+function finishAuction(room) {
+  const auction = room.auction;
+  if (!auction || auction.status !== 'active') return;
+  const propertyOwner = currentAuctionOwner(room, auction.propertyId);
+  let winner = room.players.find((player) => player.id === auction.highestBidderId && !player.isBanker);
+  if (propertyOwner || (winner && auctionBidLimit(room, winner) < auction.currentBid)) winner = null;
+
+  if (winner && auction.currentBid > 0) {
+    if (!winner.properties) winner.properties = [];
+    if (!winner.properties.includes(auction.propertyId)) winner.properties.push(auction.propertyId);
+    winner.balance -= auction.currentBid;
+    recordBalanceHistory(winner);
+    auction.winnerId = winner.id;
+    auction.winnerName = winner.name;
+    auction.status = 'completed';
+    recordEntry(room, {
+      id: uuidv4(),
+      time: new Date().toISOString(),
+      fromId: winner.id,
+      toId: room.bankerId,
+      fromName: winner.name,
+      toName: 'Banco',
+      amount: auction.currentBid,
+      type: 'auction',
+      propertyId: auction.propertyId,
+      description: `${winner.name} venceu o leilão de ${auction.propertyId} por M$${auction.currentBid.toLocaleString('pt-BR')}`,
+    });
+  } else {
+    auction.status = 'completed';
+    auction.winnerId = null;
+    auction.winnerName = null;
+    auction.result = propertyOwner ? 'property_unavailable' : 'no_bids';
+    recordEntry(room, {
+      id: uuidv4(),
+      time: new Date().toISOString(),
+      fromName: 'Banco',
+      toName: 'Todos',
+      amount: 0,
+      type: 'auction',
+      propertyId: auction.propertyId,
+      description: `Leilão de ${auction.propertyId} encerrado sem venda`,
+    });
+  }
+  auction.closedAt = new Date().toISOString();
 }
 
 // ─── Socket Logic ─────────────────────────────────────────────────────────────
@@ -166,7 +235,7 @@ io.on('connection', (socket) => {
   console.log(`[+] connect   ${socket.id}`);
 
   // ── create_room ─────────────────────────────────────────────────────────────
-  socket.on('create_room', ({ playerName, startingBalance, startingPassGo, photoUrl } = {}, callback) => {
+  socket.on('create_room', ({ playerName, startingBalance, startingPassGo = 200 } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const safeName = sanitizeString(playerName, 20);
@@ -176,8 +245,6 @@ io.on('connection', (socket) => {
       if (!balance || balance < 1 || balance > 10_000_000) {
         return callback({ success: false, error: 'Saldo inicial deve ser entre 1 e 10.000.000' });
       }
-
-      const passGoAmt = sanitizeAmount(startingPassGo) || 200;
 
       let roomCode;
       let attempts = 0;
@@ -196,7 +263,7 @@ io.on('connection', (socket) => {
         balance: 0,       // Banco tem saldo infinito – não rastreado
         isBanker: true,
         avatar: '🏦',
-        photo: sanitizePhoto(photoUrl),
+        color: null,
         properties: [],
         houses: {},
         balanceHistory: [],
@@ -210,8 +277,9 @@ io.on('connection', (socket) => {
         transactionHistory: [],
         pendingTransfers: [],
         trades: [],
+        auction: null,
         startingBalance: balance,
-        startingPassGo: passGoAmt,
+        startingPassGo: sanitizeAmount(startingPassGo) ?? 200,
         status: 'active',
         createdAt: new Date(),
       };
@@ -230,7 +298,7 @@ io.on('connection', (socket) => {
   });
 
   // ── join_room ────────────────────────────────────────────────────────────────
-  socket.on('join_room', ({ roomCode, playerName, avatar, color, sessionId, photoUrl } = {}, callback) => {
+  socket.on('join_room', ({ roomCode, playerName, avatar, color, sessionId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
       const code = sanitizeString(roomCode, 6)?.toUpperCase();
@@ -240,93 +308,33 @@ io.on('connection', (socket) => {
       if (!room) return callback({ success: false, error: 'Sala não encontrada. Verifique o código.' });
       if (room.status === 'closed') return callback({ success: false, error: 'Esta sala foi encerrada' });
 
-      deduplicatePlayers(room);
-
-      const safeName = sanitizeString(playerName, 20);
-      const safeAvatar = sanitizeString(avatar, 4);
-      const safeColor = sanitizeString(color, 10);
-      const safePhoto = sanitizePhoto(photoUrl);
-
-      // Helper to update socket IDs in transfers and trades
-      const updateSocketReferences = (oldSocketId, newSocketId) => {
-        if (!oldSocketId || oldSocketId === newSocketId) return;
-        room.pendingTransfers.forEach((req) => {
-          if (req.fromId === oldSocketId) req.fromId = newSocketId;
-          if (req.toId === oldSocketId) req.toId = newSocketId;
-        });
-        if (room.trades) {
-          room.trades.forEach((trade) => {
-            if (trade.initiatorId === oldSocketId) trade.initiatorId = newSocketId;
-            if (trade.receiverId === oldSocketId) trade.receiverId = newSocketId;
-            if (trade.proposalById === oldSocketId) trade.proposalById = newSocketId;
-          });
-        }
-      };
-
-      // ── 1. Reconnect via saved sessionId ─────────────────────────────────────
+      // ── Reconnect via saved session ──────────────────────────────────────────
       if (sessionId && typeof sessionId === 'string') {
         const existing = room.players.find((p) => p.sessionId === sessionId);
         if (existing) {
-          const oldSocketId = existing.id;
-          existing.id = socket.id;                      // update to new socket
-          if (existing.isBanker) room.bankerId = socket.id;
-          if (safeAvatar) existing.avatar = safeAvatar;
-          if (safeColor) existing.color = safeColor;
-          if (safePhoto) existing.photo = safePhoto;
-          updateSocketReferences(oldSocketId, socket.id);
-
-          socket.join(code);
-          socket.data.roomCode = code;
-          socket.data.sessionId = sessionId;
-
-          io.in(code).emit('player_rejoined', { playerName: existing.name });
-          io.in(code).emit('update_game_state', getRoomState(room));
-
-          console.log(`[room:rejoin-session] ${code}  "${existing.name}"`);
-          return callback({
-            success: true,
-            roomCode: code,
-            sessionId: existing.sessionId,
-            player: existing,
-            gameState: getRoomState(room),
-          });
+          if (existing.id !== socket.id && io.sockets.sockets.has(existing.id)) {
+            return callback({ success: false, error: 'Esta sessão já está conectada em outro dispositivo' });
+          }
+          const restored = reconnectRoomPlayer(room, code, socket, existing);
+          console.log(`[room:rejoin] ${code}  "${existing.name}"`);
+          return callback(restored);
         }
       }
 
-      // ── 2. Reconnect/Resume via matching Player Name (Prevent duplication!) ───
-      if (safeName) {
-        const existingByName = room.players.find(
-          (p) => p.name && p.name.trim().toLowerCase() === safeName.trim().toLowerCase()
-        );
-        if (existingByName) {
-          const oldSocketId = existingByName.id;
-          existingByName.id = socket.id;                // reconnect to existing player
-          if (existingByName.isBanker) room.bankerId = socket.id;
-          if (safeAvatar) existingByName.avatar = safeAvatar;
-          if (safeColor) existingByName.color = safeColor;
-          if (safePhoto) existingByName.photo = safePhoto;
-          updateSocketReferences(oldSocketId, socket.id);
 
-          socket.join(code);
-          socket.data.roomCode = code;
-          socket.data.sessionId = existingByName.sessionId;
-
-          io.in(code).emit('player_rejoined', { playerName: existingByName.name });
-          io.in(code).emit('update_game_state', getRoomState(room));
-
-          console.log(`[room:rejoin-name] ${code}  "${existingByName.name}"`);
-          return callback({
-            success: true,
-            roomCode: code,
-            sessionId: existingByName.sessionId,
-            player: existingByName,
-            gameState: getRoomState(room),
-          });
-        }
-      }
-
-      // ── 3. Create New Player (only if brand new player) ───────────────────────
+      // ── New player ────────────────────────────────────────────────────────────
+      const safeName = sanitizeString(playerName, 20);
       if (!safeName) return callback({ success: false, error: 'Nome inválido' });
+
+      const sameNamePlayers = room.players.filter((player) => !player.isBanker && player.name.trim().toLowerCase() === safeName.toLowerCase());
+      if (sameNamePlayers.length) {
+        const activeDuplicate = sameNamePlayers.find((player) => io.sockets.sockets.has(player.id));
+        if (activeDuplicate) return callback({ success: false, error: 'Este nome já está conectado à sala' });
+        return callback(reconnectRoomPlayer(room, code, socket, sameNamePlayers[0]));
+      }
+
+      const safeAvatar = sanitizeString(avatar, 4) || '👤';
+      const safeColor = sanitizeString(color, 10) || null;
 
       const humanPlayers = room.players.filter((p) => !p.isBanker);
       if (humanPlayers.length >= 8) {
@@ -341,9 +349,8 @@ io.on('connection', (socket) => {
         name: safeName,
         balance: room.startingBalance,
         isBanker: false,
-        avatar: safeAvatar || '👤',
-        color: safeColor || null,
-        photo: safePhoto,
+        avatar: safeAvatar,
+        color: safeColor,
         properties: [],
         houses: {},
         balanceHistory: [room.startingBalance],
@@ -393,14 +400,15 @@ io.on('connection', (socket) => {
 
       if (!sender)   return callback({ success: false, error: 'Remetente não encontrado' });
       if (!receiver) return callback({ success: false, error: 'Destinatário não encontrado' });
+      if (!io.sockets.sockets.has(receiver.id)) return callback({ success: false, error: 'O destinatário está desconectado; aguarde a reconexão' });
       if (sender.id === receiver.id) return callback({ success: false, error: 'Não podes transferir para ti mesmo' });
 
-      if (!sender.isBanker && sender.balance < amt) {
-        return callback({ success: false, error: `Saldo insuficiente (tens ${(sender.balance).toLocaleString('pt-BR')})` });
+      if (!sender.isBanker && availableBalance(room, sender) < amt) {
+        return callback({ success: false, error: `Saldo disponível insuficiente (M$${availableBalance(room, sender).toLocaleString('pt-BR')})` });
       }
 
       // ── Atomic execution ───────────────────────────────────────────────────
-      if (!sender.isBanker)   { sender.balance   -= amt; recordBalanceHistory(sender); }
+      if (!sender.isBanker) { sender.balance -= amt; recordBalanceHistory(sender); }
       if (!receiver.isBanker) { receiver.balance += amt; recordBalanceHistory(receiver); }
 
       const entry = {
@@ -408,19 +416,14 @@ io.on('connection', (socket) => {
         time: new Date().toISOString(),
         fromId: sender.id,
         toId: receiver.id,
-        fromName: sender.isBanker ? 'Banco' : sender.name,
-        toName: receiver.isBanker ? 'Banco' : receiver.name,
-        fromAvatar: sender.isBanker ? '🏦' : sender.avatar,
-        toAvatar: receiver.isBanker ? '🏦' : receiver.avatar,
-        fromColor: sender.color,
-        toColor: receiver.color,
+        fromName: sender.name,
+        toName: receiver.name,
         amount: amt,
         type: 'transfer',
-        description: `${sender.isBanker ? 'Banco' : sender.name} pagou M$${amt.toLocaleString('pt-BR')} a ${receiver.isBanker ? 'Banco' : receiver.name}`,
+        description: `${sender.name} pagou M$${amt.toLocaleString('pt-BR')} a ${receiver.name}`,
       };
 
-      room.transactionHistory.push(entry);
-      trimHistory(room);
+      recordEntry(room, entry);
 
       io.in(roomCode).emit('update_game_state', getRoomState(room));
 
@@ -450,6 +453,9 @@ io.on('connection', (socket) => {
 
       const target = room.players.find((p) => p.id === targetId);
       if (!target || target.isBanker) return callback({ success: false, error: 'Jogador não encontrado' });
+      if (amt < 0 && Math.abs(amt) > availableBalance(room, target)) {
+        return callback({ success: false, error: 'Este saldo está reservado para o lance atual do leilão' });
+      }
 
       const safeReason = sanitizeString(reason, 50);
 
@@ -472,8 +478,7 @@ io.on('connection', (socket) => {
             : `Banco debitou M$${absAmt.toLocaleString('pt-BR')} de ${target.name}${safeReason ? ` — ${safeReason}` : ''}`,
       };
 
-      room.transactionHistory.push(entry);
-      trimHistory(room);
+      recordEntry(room, entry);
 
       io.in(roomCode).emit('update_game_state', getRoomState(room));
 
@@ -496,15 +501,12 @@ io.on('connection', (socket) => {
       const room = rooms[roomCode];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+      if (room.auction?.status === 'active') return callback({ success: false, error: 'Encerre o leilão antes de reiniciar os saldos' });
 
-      room.players.forEach((p) => { 
-        if (!p.isBanker) {
-          p.balance = room.startingBalance;
-          recordBalanceHistory(p);
-        }
-      });
+      room.players.forEach((p) => { if (!p.isBanker) p.balance = room.startingBalance; });
+      room.players.forEach(recordBalanceHistory);
 
-      room.transactionHistory.push({
+      recordEntry(room, {
         id: uuidv4(),
         time: new Date().toISOString(),
         fromName: 'Sistema',
@@ -513,7 +515,6 @@ io.on('connection', (socket) => {
         type: 'reset',
         description: `Saldos reiniciados · M$${room.startingBalance.toLocaleString('pt-BR')} por jogador`,
       });
-      trimHistory(room);
 
       callback({ success: true });
       io.in(roomCode).emit('update_game_state', getRoomState(room));
@@ -522,6 +523,67 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('[reset_balances]', err);
       callback({ success: false, error: 'Erro interno do servidor' });
+    }
+  });
+
+  socket.on('leave_room', ({ roomCode } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const playerIndex = room.players.findIndex((player) => player.id === socket.id);
+      if (playerIndex === -1) return callback({ success: false, error: 'Jogador não encontrado' });
+      const player = room.players[playerIndex];
+
+      if (player.isBanker) {
+        room.status = 'closed';
+        if (room.auction?.status === 'active') {
+          room.auction.status = 'cancelled';
+          room.auction.closedAt = new Date().toISOString();
+          io.in(roomCode).emit('auction_cancelled', room.auction);
+        }
+        io.in(roomCode).emit('room_closed');
+        callback({ success: true });
+        setTimeout(() => { delete rooms[roomCode]; }, 60_000);
+        return;
+      }
+
+      for (const trade of room.trades) {
+        if (!['requested', 'active'].includes(trade.status) || ![trade.initiatorId, trade.recipientId].includes(player.id)) continue;
+        trade.status = 'cancelled';
+        trade.phase = 'CANCELLED';
+        trade.closedAt = new Date().toISOString();
+        const otherId = trade.initiatorId === player.id ? trade.recipientId : trade.initiatorId;
+        io.to(otherId).emit('trade_cancelled', { tradeId: trade.id, playerName: player.name, message: `${player.name} saiu da sala; negociação encerrada.` });
+      }
+
+      const auction = room.auction;
+      if (auction?.status === 'active' && auction.participantIds.includes(player.id)) {
+        if (!auction.passedPlayerIds.includes(player.id)) auction.passedPlayerIds.push(player.id);
+        chooseAuctionLeader(room);
+        advanceAuction(room, player.id);
+      }
+
+      const cancelledRequests = room.pendingTransfers.filter((request) => request.fromId === player.id || request.toId === player.id);
+      room.pendingTransfers = room.pendingTransfers.filter((request) => request.fromId !== player.id && request.toId !== player.id);
+      room.players.splice(playerIndex, 1);
+      socket.leave(roomCode);
+      socket.data.roomCode = null;
+      if (cancelledRequests.length) {
+        io.to(room.bankerId).emit('transfers_cancelled', { requestIds: cancelledRequests.map((request) => request.requestId), playerName: player.name });
+      }
+      recordEntry(room, {
+        id: uuidv4(), time: new Date().toISOString(), fromId: player.id, fromName: player.name,
+        toName: 'Banco', amount: 0, type: 'player_left',
+        description: `${player.name} saiu da partida; seus títulos voltaram ao banco`,
+      });
+      io.in(roomCode).emit('player_left', { playerName: player.name });
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      if (auction?.status === 'completed') io.in(roomCode).emit('auction_completed', auction);
+      callback({ success: true });
+    } catch (err) {
+      console.error('[leave_room]', err);
+      callback({ success: false, error: 'Erro interno' });
     }
   });
 
@@ -534,6 +596,11 @@ io.on('connection', (socket) => {
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
       room.status = 'closed';
+      if (room.auction?.status === 'active') {
+        room.auction.status = 'cancelled';
+        room.auction.closedAt = new Date().toISOString();
+        io.in(roomCode).emit('auction_cancelled', room.auction);
+      }
       io.in(roomCode).emit('room_closed');
       callback({ success: true });
 
@@ -549,12 +616,393 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('assign_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+      const target = room.players.find((player) => player.id === targetId && !player.isBanker);
+      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
+      if (!propertiesData.some((property) => property.name === propertyId)) return callback({ success: false, error: 'Propriedade inválida' });
+      if (room.auction?.status === 'active' && room.auction.propertyId === propertyId) return callback({ success: false, error: 'Esta propriedade está em leilão' });
+      if (currentAuctionOwner(room, propertyId)) return callback({ success: false, error: 'Esta propriedade já tem proprietário' });
+      if (!target.properties.includes(propertyId)) target.properties.push(propertyId);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[assign_property]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('remove_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
+      const target = room.players.find((player) => player.id === targetId && !player.isBanker);
+      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
+      target.properties = target.properties.filter((id) => id !== propertyId);
+      delete target.houses[propertyId];
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[remove_property]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('kick_player', ({ roomCode, targetId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Apenas o bancário pode remover jogadores' });
+      const playerIndex = room.players.findIndex((player) => player.id === targetId && !player.isBanker);
+      if (playerIndex === -1) return callback({ success: false, error: 'Jogador não encontrado' });
+      const player = room.players[playerIndex];
+
+      for (const trade of room.trades) {
+        if (!['requested', 'active'].includes(trade.status) || ![trade.initiatorId, trade.recipientId].includes(player.id)) continue;
+        trade.status = 'cancelled';
+        trade.phase = 'CANCELLED';
+        trade.closedAt = new Date().toISOString();
+        const otherId = trade.initiatorId === player.id ? trade.recipientId : trade.initiatorId;
+        io.to(otherId).emit('trade_cancelled', { tradeId: trade.id, playerName: player.name, message: `${player.name} foi removido; negociação encerrada.` });
+      }
+
+      const auction = room.auction;
+      if (auction?.status === 'active' && auction.participantIds.includes(player.id)) {
+        if (!auction.passedPlayerIds.includes(player.id)) auction.passedPlayerIds.push(player.id);
+        chooseAuctionLeader(room);
+        if (auction.currentTurnPlayerId === player.id) advanceAuction(room, player.id);
+      }
+
+      room.pendingTransfers = room.pendingTransfers.filter((request) => request.fromId !== player.id && request.toId !== player.id);
+      room.players.splice(playerIndex, 1);
+      const kickedSocket = io.sockets.sockets.get(player.id);
+      if (kickedSocket) {
+        kickedSocket.emit('player_kicked', { playerName: player.name });
+        kickedSocket.leave(roomCode);
+        kickedSocket.data.roomCode = null;
+      }
+      recordEntry(room, {
+        id: uuidv4(), time: new Date().toISOString(), fromId: player.id, fromName: player.name,
+        toName: 'Banco', amount: 0, type: 'player_kicked',
+        details: { properties: player.properties, houses: player.houses },
+        description: `${player.name} foi removido da sala pelo bancário; títulos devolvidos ao banco`,
+      });
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      if (auction?.status === 'completed') io.in(roomCode).emit('auction_completed', auction);
+      callback({ success: true });
+    } catch (err) {
+      console.error('[kick_player]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('buy_house', (_payload = {}, callback) => {
+    if (typeof callback === 'function') callback({ success: false, error: 'Solicite a construção ao Banco para aprovação.' });
+  });
+
+  socket.on('request_trade', ({ roomCode, toId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const initiator = room.players.find((player) => player.id === socket.id && !player.isBanker);
+      const recipient = room.players.find((player) => player.id === toId && !player.isBanker);
+      if (!initiator || !recipient) return callback({ success: false, error: 'Jogador não encontrado ou desconectado' });
+      if (!io.sockets.sockets.has(recipient.id)) return callback({ success: false, error: 'O destinatário está desconectado' });
+      if (initiator.id === recipient.id) return callback({ success: false, error: 'Não podes negociar contigo mesmo' });
+      const activeStatuses = new Set(['requested', 'active', 'banker_approval']);
+      if (room.trades.some((trade) => activeStatuses.has(trade.status) && [trade.initiatorId, trade.receiverId].some((id) => id === initiator.id || id === recipient.id))) {
+        return callback({ success: false, error: 'Um dos jogadores já possui uma negociação em andamento' });
+      }
+
+      const trade = {
+        id: uuidv4(),
+        initiatorId: initiator.id,
+        recipientId: recipient.id,
+        receiverId: recipient.id,
+        initiatorName: initiator.name,
+        recipientName: recipient.name,
+        receiverName: recipient.name,
+        status: 'requested',
+        phase: 'WAITING_INVITE_RESPONSE',
+        currentTurnPlayerId: recipient.id,
+        proposalById: null,
+        proposalRevision: 0,
+        proposal: { initiatorOffers: [], initiatorMoney: 0, receiverOffers: [], receiverMoney: 0 },
+        createdAt: new Date().toISOString(),
+      };
+      room.trades.push(trade);
+      io.to(recipient.id).emit('trade_requested', trade);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true, tradeId: trade.id });
+    } catch (err) {
+      console.error('[request_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('respond_trade', ({ roomCode, tradeId, accept } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const trade = room.trades.find((item) => item.id === tradeId && item.status === 'requested');
+      if (!trade) return callback({ success: false, error: 'Convite de negociação não encontrado' });
+      if (socket.id !== trade.recipientId) return callback({ success: false, error: 'Somente o destinatário pode responder ao convite' });
+
+      if (!accept) {
+        trade.status = 'rejected';
+        trade.phase = 'REJECTED';
+        trade.closedAt = new Date().toISOString();
+        io.to(trade.initiatorId).emit('trade_rejected', { tradeId, playerName: trade.recipientName });
+      } else {
+        trade.status = 'active';
+        trade.phase = 'BUILDING_INITIAL_OFFER';
+        trade.currentTurnPlayerId = trade.initiatorId;
+        io.to(trade.initiatorId).emit('trade_started', trade);
+        io.to(trade.recipientId).emit('trade_started', trade);
+      }
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[respond_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('update_trade_proposal', ({ roomCode, tradeId, proposal } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const trade = room.trades.find((item) => item.id === tradeId && item.status === 'active');
+      if (!trade) return callback({ success: false, error: 'Negociação encerrada ou inexistente' });
+      if (socket.id !== trade.currentTurnPlayerId) return callback({ success: false, error: 'Aguarde sua vez para montar a proposta' });
+
+      const normalized = normalizeTradeProposal(room, trade, proposal, propertiesData);
+      if (normalized.error) return callback({ success: false, error: normalized.error });
+      const { initiatorMoney, receiverMoney } = normalized.proposal;
+      if (initiatorMoney > availableBalance(room, normalized.initiator) || receiverMoney > availableBalance(room, normalized.receiver)) {
+        return callback({ success: false, error: 'A proposta usa saldo reservado ou indisponível' });
+      }
+
+      trade.proposal = normalized.proposal;
+      trade.proposalById = socket.id;
+      trade.proposalRevision += 1;
+      trade.phase = 'WAITING_OFFER_RESPONSE';
+      trade.currentTurnPlayerId = socket.id === trade.initiatorId ? trade.recipientId : trade.initiatorId;
+      trade.updatedAt = new Date().toISOString();
+      io.to(trade.initiatorId).emit('trade_proposal_updated', trade);
+      io.to(trade.recipientId).emit('trade_proposal_updated', trade);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true, proposalRevision: trade.proposalRevision });
+    } catch (err) {
+      console.error('[update_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('accept_trade_proposal', ({ roomCode, tradeId, proposalRevision } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const trade = room.trades.find((item) => item.id === tradeId && item.status === 'active');
+      if (!trade) return callback({ success: false, error: 'Negociação encerrada ou inexistente' });
+      if (socket.id !== trade.currentTurnPlayerId || socket.id === trade.proposalById) return callback({ success: false, error: 'Somente o destinatário da proposta pode aceitá-la' });
+      if (!Number.isSafeInteger(proposalRevision) || proposalRevision !== trade.proposalRevision) return callback({ success: false, error: 'A proposta foi atualizada; revise a versão atual' });
+
+      const settlement = applyTradeSettlement(room, trade);
+      if (settlement.error) return callback({ success: false, error: settlement.error });
+      trade.status = 'completed';
+      trade.phase = 'COMPLETED';
+      trade.closedAt = new Date().toISOString();
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      io.to(trade.initiatorId).emit('trade_completed', { tradeId });
+      io.to(trade.recipientId).emit('trade_completed', { tradeId });
+      callback({ success: true });
+    } catch (err) {
+      console.error('[accept_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('reject_trade_proposal', ({ roomCode, tradeId, proposalRevision } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const trade = room.trades.find((item) => item.id === tradeId && item.status === 'active');
+      if (!trade) return callback({ success: false, error: 'Negociação encerrada ou inexistente' });
+      if (socket.id !== trade.currentTurnPlayerId || socket.id === trade.proposalById) return callback({ success: false, error: 'Somente o destinatário pode recusar a proposta' });
+      if (!Number.isSafeInteger(proposalRevision) || proposalRevision !== trade.proposalRevision) return callback({ success: false, error: 'A proposta já foi atualizada' });
+
+      trade.status = 'rejected';
+      trade.phase = 'REJECTED';
+      trade.closedAt = new Date().toISOString();
+      const rejecterName = room.players.find((player) => player.id === socket.id)?.name || 'Jogador';
+      io.to(trade.proposalById).emit('trade_rejected', { tradeId, playerName: rejecterName });
+      io.to(socket.id).emit('trade_cancelled', { tradeId, message: 'Você recusou a proposta recebida.' });
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[reject_trade_proposal]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('cancel_trade', ({ roomCode, tradeId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      const trade = room.trades.find((item) => item.id === tradeId && ['requested', 'active'].includes(item.status));
+      if (!trade) return callback({ success: false, error: 'Negociação não encontrada ou encerrada' });
+      if (![trade.initiatorId, trade.recipientId].includes(socket.id)) return callback({ success: false, error: 'Sem permissão' });
+      trade.status = 'cancelled';
+      trade.phase = 'CANCELLED';
+      trade.closedAt = new Date().toISOString();
+      const otherId = socket.id === trade.initiatorId ? trade.recipientId : trade.initiatorId;
+      io.to(otherId).emit('trade_cancelled', { tradeId, playerName: room.players.find((player) => player.id === socket.id)?.name });
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[cancel_trade]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('start_auction', ({ roomCode, propertyId, participantIds, firstPlayerId, startingBid = 0 } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Apenas o bancário pode iniciar leilões' });
+      if (room.auction?.status === 'active') return callback({ success: false, error: 'Já existe um leilão em andamento' });
+      if (!propertiesData.some((property) => property.name === propertyId)) return callback({ success: false, error: 'Propriedade inválida' });
+      if (currentAuctionOwner(room, propertyId)) return callback({ success: false, error: 'Esta propriedade já tem proprietário' });
+      if (room.pendingTransfers.some((request) => request.metadata?.type === 'buy_property' && request.metadata.propertyId === propertyId)) {
+        return callback({ success: false, error: 'Esta propriedade já tem uma compra aguardando o Banco' });
+      }
+      if (!Array.isArray(participantIds) || participantIds.length < 1 || participantIds.length > 8 || new Set(participantIds).size !== participantIds.length) {
+        return callback({ success: false, error: 'Selecione de um a oito participantes diferentes' });
+      }
+      const participants = participantIds.map((id) => room.players.find((player) => player.id === id && !player.isBanker));
+      if (participants.some((player) => !player)) return callback({ success: false, error: 'Um participante não está mais na sala' });
+      if (participants.some((player) => !io.sockets.sockets.has(player.id))) return callback({ success: false, error: 'Todos os participantes precisam estar conectados' });
+      if (!participantIds.includes(firstPlayerId)) return callback({ success: false, error: 'O primeiro jogador deve participar do leilão' });
+      const openingBid = Number(startingBid);
+      if (!Number.isSafeInteger(openingBid) || openingBid < 0 || openingBid > 1_000_000_000) return callback({ success: false, error: 'Lance inicial inválido' });
+
+      room.auction = {
+        id: uuidv4(),
+        propertyId,
+        participantIds: [...participantIds],
+        currentTurnPlayerId: firstPlayerId,
+        startingBid: openingBid,
+        currentBid: 0,
+        highestBidderId: null,
+        bids: [],
+        passedPlayerIds: [],
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+      io.in(roomCode).emit('auction_started', room.auction);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true, auction: room.auction });
+    } catch (err) {
+      console.error('[start_auction]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('place_auction_bid', ({ roomCode, auctionId, amount } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      const auction = room?.auction;
+      if (!auction || auction.id !== auctionId || auction.status !== 'active') return callback({ success: false, error: 'Leilão não está ativo' });
+      if (socket.id !== auction.currentTurnPlayerId) return callback({ success: false, error: 'Não é a sua vez de dar lance' });
+      if (!auction.participantIds.includes(socket.id) || auction.passedPlayerIds.includes(socket.id)) return callback({ success: false, error: 'Você não participa mais deste leilão' });
+      const player = room.players.find((candidate) => candidate.id === socket.id && !candidate.isBanker);
+      if (!player) return callback({ success: false, error: 'Jogador não encontrado; reconecte à sala' });
+      const bid = Number(amount);
+      const minimumBid = Math.max(auction.startingBid, auction.currentBid + 1);
+      if (!Number.isSafeInteger(bid) || bid < minimumBid) return callback({ success: false, error: `O lance mínimo é M$${minimumBid.toLocaleString('pt-BR')}` });
+      if (bid > auctionBidLimit(room, player)) return callback({ success: false, error: 'Saldo insuficiente após reservar os pedidos pendentes' });
+
+      const bidEvent = { playerId: player.id, playerName: player.name, amount: bid, time: new Date().toISOString() };
+      auction.bids.push(bidEvent);
+      auction.currentBid = bid;
+      auction.highestBidderId = player.id;
+      auction.lastAction = bidEvent;
+      advanceAuction(room, player.id);
+      io.in(roomCode).emit('auction_update', auction);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      if (auction.status === 'completed') io.in(roomCode).emit('auction_completed', auction);
+      callback({ success: true, auction });
+    } catch (err) {
+      console.error('[place_auction_bid]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('pass_auction_turn', ({ roomCode, auctionId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      const auction = room?.auction;
+      if (!auction || auction.id !== auctionId || auction.status !== 'active') return callback({ success: false, error: 'Leilão não está ativo' });
+      if (socket.id !== auction.currentTurnPlayerId) return callback({ success: false, error: 'Não é a sua vez de desistir' });
+      if (auction.passedPlayerIds.includes(socket.id)) return callback({ success: false, error: 'Você já desistiu deste leilão' });
+      const player = room.players.find((candidate) => candidate.id === socket.id && !candidate.isBanker);
+      if (!player) return callback({ success: false, error: 'Jogador não encontrado; reconecte à sala' });
+
+      auction.passedPlayerIds.push(socket.id);
+      auction.lastAction = { playerId: player.id, playerName: player.name, action: 'pass', time: new Date().toISOString() };
+      chooseAuctionLeader(room);
+      advanceAuction(room, player.id);
+      io.in(roomCode).emit('auction_update', auction);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      if (auction.status === 'completed') io.in(roomCode).emit('auction_completed', auction);
+      callback({ success: true, auction });
+    } catch (err) {
+      console.error('[pass_auction_turn]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
+  socket.on('cancel_auction', ({ roomCode, auctionId } = {}, callback) => {
+    if (typeof callback !== 'function') return;
+    try {
+      const room = rooms[roomCode];
+      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
+      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Apenas o bancário pode encerrar o leilão' });
+      const auction = room.auction;
+      if (!auction || auction.id !== auctionId || auction.status !== 'active') return callback({ success: false, error: 'Leilão não está ativo' });
+      auction.status = 'cancelled';
+      auction.closedAt = new Date().toISOString();
+      io.in(roomCode).emit('auction_cancelled', auction);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
+      callback({ success: true });
+    } catch (err) {
+      console.error('[cancel_auction]', err);
+      callback({ success: false, error: 'Erro interno' });
+    }
+  });
+
   // ── request_transfer (Player → Banker queue) ─────────────────────────────────
   socket.on('request_transfer', ({ roomCode, toId, amount, reason, metadata } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const code = roomCode?.toUpperCase();
-      const room = rooms[code];
+      const room = rooms[roomCode];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
 
       const fromId = socket.id;
@@ -567,65 +1015,59 @@ io.on('connection', (socket) => {
 
       if (!sender)   return callback({ success: false, error: 'Jogador não encontrado' });
       if (!receiver) return callback({ success: false, error: 'Destinatário não encontrado' });
+      if (!io.sockets.sockets.has(receiver.id)) return callback({ success: false, error: 'O destinatário está desconectado; aguarde a reconexão' });
       if (sender.id === receiver.id) return callback({ success: false, error: 'Não podes transferir para ti mesmo' });
       let requestAmount = amt;
-      let requestMetadata = metadata || null;
-      let requestReason = sanitizeString(reason, 50);
+      let requestMetadata = null;
 
       if (metadata?.type === 'buy_house') {
-        if (sender.isBanker || receiver.id !== room.bankerId || !receiver.isBanker) {
-          return callback({ success: false, error: 'Pedidos de construção devem ser enviados ao Banco' });
-        }
-        const quantity = Number(metadata.housesToAdd);
-        const plan = getConstructionPlan({ room, player: sender, propertyId: metadata.propertyId, quantity, propertiesData });
+        if (sender.isBanker || !receiver.isBanker || receiver.id !== room.bankerId) return callback({ success: false, error: 'Construções precisam ser solicitadas ao Banco' });
+        const plan = getConstructionPlan({ room, player: sender, propertyId: metadata.propertyId, quantity: Number(metadata.housesToAdd), propertiesData });
         if (plan.error) return callback({ success: false, error: plan.error });
-
         requestAmount = plan.totalCost;
         requestMetadata = {
-          type: 'buy_house',
-          propertyId: metadata.propertyId,
-          propertyName: plan.property.name,
-          housesToAdd: plan.housesToAdd,
-          currentHouses: plan.currentHouses,
-          targetHouses: plan.targetHouses,
-          unitCosts: plan.unitCosts,
-          houseCost: plan.houseCost,
-          hotelCost: plan.hotelCost,
-          totalCost: plan.totalCost,
+          type: 'buy_house', propertyId: plan.property.name, propertyName: plan.property.name,
+          housesToAdd: plan.housesToAdd, currentHouses: plan.currentHouses, targetHouses: plan.targetHouses,
+          unitCosts: plan.unitCosts, houseCost: plan.houseCost, hotelCost: plan.hotelCost,
         };
-        requestReason = `Construção em ${plan.property.name}`;
-      } else if (!amt || amt <= 0) {
-        return callback({ success: false, error: 'Valor inválido' });
+      } else if (metadata?.propertyId) {
+        if (!receiver.isBanker || receiver.id !== room.bankerId) return callback({ success: false, error: 'Compras de terreno devem ser solicitadas ao Banco' });
+        const property = propertiesData.find((item) => item.name === metadata.propertyId);
+        if (!property) return callback({ success: false, error: 'Propriedade inválida' });
+        if (room.auction?.status === 'active' && room.auction.propertyId === property.name) return callback({ success: false, error: 'Esta propriedade está em leilão' });
+        if (currentAuctionOwner(room, property.name)) return callback({ success: false, error: 'Esta propriedade já tem proprietário' });
+        requestAmount = property.totalValue;
+        requestMetadata = { type: 'buy_property', propertyId: property.name, propertyName: property.name };
       }
 
-      if (!sender.isBanker && sender.balance < requestAmount) {
-        return callback({ success: false, error: `Saldo insuficiente (tens M$${sender.balance.toLocaleString('pt-BR')})` });
+      if (!sender.isBanker && requestAmount > availableBalance(room, sender)) {
+        return callback({ success: false, error: `Saldo disponível insuficiente (M$${availableBalance(room, sender).toLocaleString('pt-BR')})` });
       }
+
+      const safeReason = sanitizeString(reason, 50);
 
       const request = {
         requestId: uuidv4(),
         fromId,
-        fromName: sender.isBanker ? 'Banco' : sender.name,
-        fromAvatar: sender.isBanker ? '🏦' : sender.avatar,
+        fromName: sender.name,
+        fromAvatar: sender.avatar,
         fromColor: sender.color || null,
-        fromPhoto: sender.isBanker ? null : (sender.photo || null),
         toId,
-        toName: receiver.isBanker ? 'Banco' : receiver.name,
-        toAvatar: receiver.isBanker ? '🏦' : receiver.avatar,
+        toName: receiver.name,
+        toAvatar: receiver.avatar,
         toColor: receiver.color || null,
-        toPhoto: receiver.isBanker ? null : (receiver.photo || null),
         amount: requestAmount,
-        reason: requestReason,
+        reason: safeReason,
         metadata: requestMetadata,
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
 
       room.pendingTransfers.push(request);
-      io.in(code).emit('new_transfer_request', request);
-      io.in(code).emit('update_game_state', getRoomState(room));
+      io.to(room.bankerId).emit('new_transfer_request', request);
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
 
-      console.log(`[transfer:request] ${roomCode}  ${sender.name} → ${receiver.name}  M$${amt}`);
+      console.log(`[transfer:request] ${roomCode}  ${sender.name} → ${receiver.name}  M$${requestAmount}`);
       callback({ success: true, requestId: request.requestId });
 
     } catch (err) {
@@ -638,8 +1080,7 @@ io.on('connection', (socket) => {
   socket.on('approve_transfer', ({ roomCode, requestId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const code = roomCode?.toUpperCase();
-      const room = rooms[code];
+      const room = rooms[roomCode];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
@@ -652,7 +1093,7 @@ io.on('connection', (socket) => {
 
       if (!sender || !receiver) {
         room.pendingTransfers.splice(idx, 1);
-        io.in(code).emit('update_game_state', getRoomState(room));
+        io.in(roomCode).emit('update_game_state', getRoomState(room));
         return callback({ success: false, error: 'Jogador saiu da sala' });
       }
 
@@ -666,63 +1107,46 @@ io.on('connection', (socket) => {
           propertiesData,
           excludeRequestId: req.requestId,
         });
-        if (!receiver.isBanker || receiver.id !== room.bankerId || constructionPlan.error || req.amount !== constructionPlan.totalCost) {
+        if (constructionPlan.error || !receiver.isBanker || receiver.id !== room.bankerId || req.amount !== constructionPlan.totalCost) {
           room.pendingTransfers.splice(idx, 1);
-          io.in(code).emit('update_game_state', getRoomState(room));
-          io.to(req.fromId).emit('notification', {
-            type: 'error',
-            message: constructionPlan.error || 'Solicitação de construção desatualizada; envie um novo pedido.',
-          });
-          return callback({ success: false, error: constructionPlan.error || 'Solicitação de construção desatualizada' });
+          io.in(roomCode).emit('update_game_state', getRoomState(room));
+          io.to(req.fromId).emit('notification', { type: 'error', message: constructionPlan.error || 'O pedido mudou; envie uma nova solicitação.' });
+          return callback({ success: false, error: constructionPlan.error || 'Solicitação desatualizada' });
+        }
+        if (req.amount > availableBalance(room, sender, req.requestId)) {
+          room.pendingTransfers.splice(idx, 1);
+          io.in(roomCode).emit('update_game_state', getRoomState(room));
+          io.to(req.fromId).emit('notification', { type: 'error', message: 'Saldo disponível insuficiente após considerar o leilão ativo.' });
+          return callback({ success: false, error: 'Saldo disponível insuficiente' });
+        }
+      } else if (req.metadata?.type === 'buy_property') {
+        const property = propertiesData.find((item) => item.name === req.metadata.propertyId);
+        if (!property || currentAuctionOwner(room, req.metadata.propertyId) || req.amount !== property.totalValue) {
+          room.pendingTransfers.splice(idx, 1);
+          io.in(roomCode).emit('update_game_state', getRoomState(room));
+          io.to(req.fromId).emit('notification', { type: 'error', message: 'A propriedade não está mais disponível para compra.' });
+          return callback({ success: false, error: 'Propriedade indisponível' });
         }
       }
 
-      if (!sender.isBanker && sender.balance < req.amount) {
+      if (!sender.isBanker && req.amount > availableBalance(room, sender, req.requestId)) {
         room.pendingTransfers.splice(idx, 1);
-        io.in(code).emit('update_game_state', getRoomState(room));
+        io.in(roomCode).emit('update_game_state', getRoomState(room));
         io.to(req.fromId).emit('notification', {
           type: 'error', message: `❌ Transferência cancelada: saldo insuficiente`
         });
         return callback({ success: false, error: 'Saldo insuficiente — pedido cancelado' });
       }
 
-      if (!sender.isBanker)   { sender.balance   -= req.amount; recordBalanceHistory(sender); }
-      if (!receiver.isBanker) { receiver.balance += req.amount; recordBalanceHistory(receiver); }
+      if (!sender.isBanker) { sender.balance -= req.amount; recordBalanceHistory(sender); }
+      if (!receiver.isBanker) receiver.balance += req.amount;
 
-      // Construction costs and quantities are derived again from canonical server state.
-      if (req.metadata && req.metadata.type === 'buy_house' && req.metadata.propertyId) {
-        if (!sender.houses) sender.houses = {};
-        sender.houses[req.metadata.propertyId] = constructionPlan.targetHouses;
-
-        io.in(code).emit('update_properties', { playerId: sender.id, properties: sender.properties, houses: sender.houses });
-
-        const hotelCount = constructionPlan.unitCosts.filter((_, index) => constructionPlan.currentHouses + index + 1 === 5).length;
-        const houseCount = constructionPlan.housesToAdd - hotelCount;
-        const houseLabel = [houseCount ? `${houseCount} casa(s)` : '', hotelCount ? `${hotelCount} hotel(is)` : ''].filter(Boolean).join(' e ');
-        io.in(code).emit('game_notification', {
-          type: 'success',
-          message: `🏠 ${sender.name} construiu ${houseLabel} em ${req.metadata.propertyId}!`,
-        });
-      } else if (req.metadata && req.metadata.propertyId) {
-        // Assign property if it's a property purchase
-        if (!sender.properties) sender.properties = [];
-        if (!sender.properties.includes(req.metadata.propertyId)) {
-          sender.properties.push(req.metadata.propertyId);
-          // emit update_properties so all clients get the new possession instantly
-          io.in(code).emit('update_properties', { playerId: sender.id, properties: sender.properties });
-        }
+      if (req.metadata?.type === 'buy_house') sender.houses[req.metadata.propertyId] = constructionPlan.targetHouses;
+      if (req.metadata?.type === 'buy_property' && !sender.properties.includes(req.metadata.propertyId)) {
+        sender.properties.push(req.metadata.propertyId);
       }
 
       room.pendingTransfers.splice(idx, 1);
-
-      let transDesc = req.reason;
-      if (!transDesc) {
-        if (req.metadata && req.metadata.type === 'buy_house') {
-          transDesc = `${req.fromName} construiu ${req.metadata.housesToAdd} nível(is) em ${req.metadata.propertyId}`;
-        } else {
-          transDesc = `${req.fromName} pagou M$${req.amount.toLocaleString('pt-BR')} a ${req.toName}`;
-        }
-      }
 
       const entry = {
         id: uuidv4(),
@@ -732,21 +1156,27 @@ io.on('connection', (socket) => {
         fromName: req.fromName,
         toName:   req.toName,
         amount: req.amount,
-        type: req.metadata && req.metadata.type === 'buy_house' ? 'debit' : 'transfer',
-        description: transDesc,
+        type: req.metadata?.type === 'buy_house' ? 'house_purchase' : req.metadata?.type === 'buy_property' ? 'property_purchase' : 'transfer',
+        propertyId: req.metadata?.propertyId,
+        quantity: req.metadata?.housesToAdd,
+        unitCosts: req.metadata?.unitCosts,
+        description: req.reason
+          ? `${req.fromName} → ${req.toName} — ${req.reason}`
+          : req.metadata?.type === 'buy_house'
+            ? `${req.fromName} construiu ${req.metadata.housesToAdd} nível(is) em ${req.metadata.propertyName}`
+            : req.metadata?.type === 'buy_property'
+              ? `${req.fromName} comprou ${req.metadata.propertyName}`
+              : `${req.fromName} pagou M$${req.amount.toLocaleString('pt-BR')} a ${req.toName}`,
       };
-      room.transactionHistory.push(entry);
-      trimHistory(room);
+      recordEntry(room, entry);
 
-      io.in(code).emit('update_game_state', getRoomState(room));
+      io.in(roomCode).emit('update_game_state', getRoomState(room));
 
       // Directed notifications
       if (sender.id !== room.bankerId) {
         io.to(sender.id).emit('notification', {
-          type: req.metadata?.type === 'buy_house' ? 'success' : 'debit',
-          message: req.metadata?.type === 'buy_house'
-            ? `🏠 Construção em ${req.metadata.propertyName || req.metadata.propertyId} aprovada. Total debitado: M$${req.amount.toLocaleString('pt-BR')}.`
-            : `💳 Pagamento de M$${req.amount.toLocaleString('pt-BR')} aprovado → ${req.toName}`,
+          type: 'debit',
+          message: `💳 Pagamento de M$${req.amount.toLocaleString('pt-BR')} aprovado → ${req.toName}`,
         });
       }
       if (receiver.id !== room.bankerId) {
@@ -773,8 +1203,7 @@ io.on('connection', (socket) => {
   socket.on('reject_transfer', ({ roomCode, requestId } = {}, callback) => {
     if (typeof callback !== 'function') return;
     try {
-      const code = roomCode?.toUpperCase();
-      const room = rooms[code];
+      const room = rooms[roomCode];
       if (!room) return callback({ success: false, error: 'Sala não encontrada' });
       if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
 
@@ -784,14 +1213,12 @@ io.on('connection', (socket) => {
       const req = room.pendingTransfers[idx];
       room.pendingTransfers.splice(idx, 1);
 
-      io.in(code).emit('update_game_state', getRoomState(room));
+      io.to(room.bankerId).emit('update_game_state', getRoomState(room));
 
       if (req.fromId !== room.bankerId) {
         io.to(req.fromId).emit('notification', {
           type: 'warning',
-          message: req.metadata?.type === 'buy_house'
-            ? `❌ Pedido de construção em ${req.metadata.propertyName || req.metadata.propertyId} recusado pelo Banco.`
-            : `❌ Transferência de M$${req.amount.toLocaleString('pt-BR')} recusada pelo bancário`,
+          message: `❌ Transferência de M$${req.amount.toLocaleString('pt-BR')} recusada pelo bancário`,
         });
       }
 
@@ -804,518 +1231,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── pass_go ──────────────────────────────────────────────────────────────────
-  socket.on('pass_go', ({ roomCode, amount = 200 } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const player = room.players.find(p => p.id === socket.id);
-      if (!player || player.isBanker) return callback({ success: false, error: 'Ação inválida para este usuário' });
-
-      const amt = sanitizeAmount(amount) || 200;
-      player.balance += amt;
-      recordBalanceHistory(player);
-
-      room.transactionHistory.push({
-        id: uuidv4(),
-        time: new Date().toISOString(),
-        fromName: 'Banco',
-        toName: player.name,
-        amount: amt,
-        type: 'credit',
-        description: `${player.name} passou pelo Início e recebeu M$${amt.toLocaleString('pt-BR')}`
-      });
-      trimHistory(room);
-
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.in(roomCode).emit('game_notification', {
-        type: 'success',
-        message: `${player.name} passou pelo Início (+M$${amt})`,
-      });
-
-      callback({ success: true });
-    } catch (err) {
-      console.error('[pass_go]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── collect_fine ─────────────────────────────────────────────────────────────
-  socket.on('collect_fine', ({ roomCode, amount, reason } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-
-      const player = room.players.find(p => p.id === socket.id);
-      if (!player || player.isBanker) return callback({ success: false, error: 'Ação inválida' });
-
-      const amt = sanitizeAmount(amount);
-      if (!amt || amt <= 0) return callback({ success: false, error: 'Valor inválido' });
-
-      player.balance = Math.max(0, player.balance - amt);
-      recordBalanceHistory(player);
-      
-      const safeReason = sanitizeString(reason, 50) || 'Multa';
-
-      room.transactionHistory.push({
-        id: uuidv4(),
-        time: new Date().toISOString(),
-        fromName: player.name,
-        toName: 'Banco',
-        amount: amt,
-        type: 'debit',
-        description: `${player.name} pagou M$${amt.toLocaleString('pt-BR')} — ${safeReason}`
-      });
-      trimHistory(room);
-
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.in(roomCode).emit('game_notification', {
-        type: 'warning',
-        message: `${player.name} pagou uma multa de M$${amt}`,
-      });
-
-      callback({ success: true });
-    } catch (err) {
-      console.error('[collect_fine]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── start_auction (Banker only) ──────────────────────────────────────────────
-  socket.on('start_auction', ({ roomCode, propertyId, startingBid } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
-
-      io.in(roomCode).emit('game_notification', {
-        type: 'info',
-        message: `Leilão iniciado! Preparem seus lances.`,
-      });
-      
-      io.in(roomCode).emit('auction_started', { propertyId, startingBid: sanitizeAmount(startingBid) });
-
-      callback({ success: true });
-    } catch (err) {
-      console.error('[start_auction]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── assign_property (Banker only) ────────────────────────────────────────────
-  socket.on('assign_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
-
-      const target = room.players.find(p => p.id === targetId);
-      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
-      if (!propertiesData.some((property) => property.name === propertyId)) return callback({ success: false, error: 'Propriedade inválida' });
-
-      const currentOwner = room.players.find((player) => player.id !== targetId && player.properties?.includes(propertyId));
-      if (currentOwner) return callback({ success: false, error: `${propertyId} já pertence a ${currentOwner.name}` });
-
-      if (!target.properties) target.properties = [];
-      if (!target.properties.includes(propertyId)) {
-        target.properties.push(propertyId);
-      }
-
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.in(roomCode).emit('update_properties', { playerId: targetId, properties: target.properties });
-      io.in(roomCode).emit('game_notification', {
-        type: 'success',
-        message: `${target.name} adquiriu uma nova propriedade!`,
-      });
-
-      callback({ success: true });
-    } catch (err) {
-      console.error('[assign_property]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── remove_property (Banker only) ────────────────────────────────────────────
-  socket.on('remove_property', ({ roomCode, targetId, propertyId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
-
-      const target = room.players.find(p => p.id === targetId);
-      if (!target) return callback({ success: false, error: 'Jogador não encontrado' });
-
-      if (target.properties) {
-        target.properties = target.properties.filter(id => id !== propertyId);
-      }
-      if (target.houses) delete target.houses[propertyId];
-
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.in(roomCode).emit('update_properties', { playerId: targetId, properties: target.properties });
-
-      callback({ success: true });
-    } catch (err) {
-      console.error('[remove_property]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  socket.on('buy_house', (_payload = {}, callback) => {
-    if (typeof callback === 'function') {
-      callback({ success: false, error: 'Construções precisam ser enviadas ao Banco para aprovação.' });
-    }
-  });
-
-  // ── request_trade ────────────────────────────────────────────────────────────
-  socket.on('request_trade', ({ roomCode, toId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const fromId = socket.id;
-      const sender = room.players.find(p => p.id === fromId);
-      const receiver = room.players.find(p => p.id === toId);
-      
-      if (!sender || !receiver) return callback({ success: false, error: 'Jogador não encontrado' });
-      if (sender.isBanker || receiver.isBanker) return callback({ success: false, error: 'Apenas jogadores podem negociar entre si' });
-      if (sender.id === receiver.id) return callback({ success: false, error: 'Não podes negociar contigo mesmo' });
-      if (room.trades.some((trade) => ['requested', 'active', 'banker_approval'].includes(trade.status) &&
-        [trade.initiatorId, trade.receiverId].some((id) => id === sender.id || id === receiver.id))) {
-        return callback({ success: false, error: 'Um dos jogadores já possui uma negociação em andamento' });
-      }
-      
-      const tradeId = uuidv4();
-      const newTrade = {
-        id: tradeId,
-        initiatorId: sender.id,
-        receiverId: receiver.id,
-        initiatorName: sender.name,
-        receiverName: receiver.name,
-        status: 'requested',
-        proposalRevision: 0,
-        proposalById: sender.id,
-        proposal: {
-          initiatorOffers: [],
-          initiatorMoney: 0,
-          receiverOffers: [],
-          receiverMoney: 0
-        }
-      };
-      
-      room.trades.push(newTrade);
-      io.to(receiver.id).emit('trade_requested', newTrade);
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      
-      callback({ success: true, tradeId });
-    } catch (err) {
-      console.error('[request_trade]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── respond_trade ────────────────────────────────────────────────────────────
-  socket.on('respond_trade', ({ roomCode, tradeId, accept } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
-      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
-      const trade = room.trades[tradeIdx];
-      
-      if (trade.status !== 'requested') return callback({ success: false, error: 'Este convite de negociação já foi respondido' });
-      if (socket.id !== trade.receiverId) return callback({ success: false, error: 'Sem permissão' });
-      
-      if (accept) {
-        trade.status = 'active';
-        trade.proposalById = trade.initiatorId;
-        trade.proposalRevision = Number(trade.proposalRevision) || 0;
-        io.to(trade.initiatorId).emit('trade_started', trade);
-        io.to(trade.receiverId).emit('trade_started', trade);
-      } else {
-        room.trades.splice(tradeIdx, 1);
-        io.to(trade.initiatorId).emit('trade_rejected', { tradeId, playerName: trade.receiverName });
-      }
-      
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      callback({ success: true });
-    } catch (err) {
-      console.error('[respond_trade]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── update_trade_proposal (either participant, any time — live/simultaneous) ─
-  socket.on('update_trade_proposal', ({ roomCode, tradeId, proposal } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const trade = room.trades.find(t => t.id === tradeId);
-      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
-      
-      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
-        return callback({ success: false, error: 'Sem permissão' });
-      }
-      
-      const normalized = normalizeTradeProposal(room, trade, proposal, propertiesData);
-      if (normalized.error) return callback({ success: false, error: normalized.error });
-
-      trade.proposal = normalized.proposal;
-      trade.proposalById = socket.id;
-      trade.proposalRevision = (Number(trade.proposalRevision) || 0) + 1;
-      trade.updatedAt = new Date().toISOString();
-      
-      io.to(trade.initiatorId).emit('trade_proposal_updated', trade);
-      io.to(trade.receiverId).emit('trade_proposal_updated', trade);
-      
-      callback({ success: true });
-    } catch (err) {
-      console.error('[update_trade_proposal]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── set_trade_ready (either participant marks their side as agreed) ─────────
-  socket.on('set_trade_ready', ({ roomCode, tradeId, ready = true } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const trade = room.trades.find(t => t.id === tradeId);
-      if (!trade || trade.status !== 'active') return callback({ success: false, error: 'Negociação inválida' });
-      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
-        return callback({ success: false, error: 'Sem permissão' });
-      }
-      
-      if (socket.id === trade.initiatorId) trade.initiatorReady = !!ready;
-      else trade.receiverReady = !!ready;
-      
-      if (trade.initiatorReady && trade.receiverReady) {
-        trade.status = 'banker_approval';
-        io.to(trade.initiatorId).emit('trade_approval_request', trade);
-        io.to(trade.receiverId).emit('trade_approval_request', trade);
-        if (room.bankerId) {
-          io.to(room.bankerId).emit('trade_approval_request', trade);
-          io.to(room.bankerId).emit('game_notification', { type: 'info', message: 'Nova negociação pendente de aprovação!' });
-        }
-      } else {
-        io.to(trade.initiatorId).emit('trade_proposal_updated', trade);
-        io.to(trade.receiverId).emit('trade_proposal_updated', trade);
-      }
-      
-      callback({ success: true });
-    } catch (err) {
-      console.error('[set_trade_ready]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  socket.on('accept_trade_proposal', ({ roomCode, tradeId, proposalRevision } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      const trade = room.trades.find((item) => item.id === tradeId && item.status === 'active');
-      if (!trade) return callback({ success: false, error: 'Negociação não encontrada' });
-      if (![trade.initiatorId, trade.receiverId].includes(socket.id)) return callback({ success: false, error: 'Sem permissão' });
-      if (!trade.proposalById) return callback({ success: false, error: 'Nenhuma proposta foi enviada' });
-      if (socket.id === trade.proposalById) return callback({ success: false, error: 'Somente quem recebeu a proposta pode aceitá-la' });
-      if (!Number.isSafeInteger(proposalRevision) || proposalRevision !== (Number(trade.proposalRevision) || 0)) {
-        return callback({ success: false, error: 'Esta proposta foi atualizada. Revise os novos termos antes de aceitar.' });
-      }
-
-      const result = applyTradeSettlement(room, trade);
-      if (result.error) return callback({ success: false, error: result.error });
-      room.trades = room.trades.filter((item) => item.id !== tradeId);
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.to(trade.initiatorId).emit('trade_completed', { tradeId });
-      io.to(trade.receiverId).emit('trade_completed', { tradeId });
-      callback({ success: true });
-    } catch (err) {
-      console.error('[accept_trade_proposal]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  socket.on('reject_trade_proposal', ({ roomCode, tradeId, proposalRevision } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      const tradeIdx = room.trades.findIndex((item) => item.id === tradeId && item.status === 'active');
-      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
-      const trade = room.trades[tradeIdx];
-      if (!trade.proposalById) return callback({ success: false, error: 'Nenhuma proposta foi enviada' });
-      if (socket.id === trade.proposalById || ![trade.initiatorId, trade.receiverId].includes(socket.id)) {
-        return callback({ success: false, error: 'Somente o destinatário da proposta pode recusá-la' });
-      }
-      if (!Number.isSafeInteger(proposalRevision) || proposalRevision !== (Number(trade.proposalRevision) || 0)) {
-        return callback({ success: false, error: 'A proposta já foi atualizada' });
-      }
-
-      room.trades.splice(tradeIdx, 1);
-      const rejecterName = room.players.find((player) => player.id === socket.id)?.name || trade.receiverName;
-      io.to(trade.proposalById).emit('trade_rejected', { tradeId, playerName: rejecterName });
-      io.to(socket.id).emit('trade_cancelled', { tradeId, message: 'Você recusou a proposta recebida.' });
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      callback({ success: true });
-    } catch (err) {
-      console.error('[reject_trade_proposal]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── approve_trade ────────────────────────────────────────────────────────────
-  socket.on('approve_trade', ({ roomCode, tradeId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
-      
-      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
-      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
-      const trade = room.trades[tradeIdx];
-      
-      if (trade.status !== 'banker_approval') return callback({ success: false, error: 'Negociação não está aguardando aprovação' });
-      
-      const initiator = room.players.find(p => p.id === trade.initiatorId);
-      const receiver = room.players.find(p => p.id === trade.receiverId);
-      
-      if (!initiator || !receiver) {
-        room.trades.splice(tradeIdx, 1);
-        io.in(roomCode).emit('update_game_state', getRoomState(room));
-        return callback({ success: false, error: 'Jogador saiu da sala' });
-      }
-      const settlement = applyTradeSettlement(room, trade);
-      if (settlement.error) {
-        room.trades.splice(tradeIdx, 1);
-        io.in(roomCode).emit('update_game_state', getRoomState(room));
-        io.to(trade.initiatorId).emit('notification', { type: 'error', message: `❌ Negociação cancelada: ${settlement.error}` });
-        io.to(trade.receiverId).emit('notification', { type: 'error', message: `❌ Negociação cancelada: ${settlement.error}` });
-        return callback({ success: false, error: settlement.error });
-      }
-      
-      room.trades.splice(tradeIdx, 1);
-      
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      
-      io.to(initiator.id).emit('trade_completed', { tradeId });
-      io.to(receiver.id).emit('trade_completed', { tradeId });
-      
-      callback({ success: true });
-    } catch (err) {
-      console.error('[approve_trade]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── reject_trade_bank ────────────────────────────────────────────────────────
-  socket.on('reject_trade_bank', ({ roomCode, tradeId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Sem permissão' });
-      
-      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
-      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
-      const trade = room.trades[tradeIdx];
-      
-      room.trades.splice(tradeIdx, 1);
-      
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      io.to(trade.initiatorId).emit('trade_rejected_bank', { tradeId });
-      io.to(trade.receiverId).emit('trade_rejected_bank', { tradeId });
-      
-      callback({ success: true });
-    } catch (err) {
-      console.error('[reject_trade_bank]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── cancel_trade ─────────────────────────────────────────────────────────────
-  socket.on('cancel_trade', ({ roomCode, tradeId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const room = rooms[roomCode];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      
-      const tradeIdx = room.trades.findIndex(t => t.id === tradeId);
-      if (tradeIdx === -1) return callback({ success: false, error: 'Negociação não encontrada' });
-      const trade = room.trades[tradeIdx];
-      
-      if (socket.id !== trade.initiatorId && socket.id !== trade.receiverId) {
-        return callback({ success: false, error: 'Sem permissão' });
-      }
-      
-      room.trades.splice(tradeIdx, 1);
-      
-      const otherId = socket.id === trade.initiatorId ? trade.receiverId : trade.initiatorId;
-      io.to(otherId).emit('trade_cancelled', { tradeId });
-      
-      io.in(roomCode).emit('update_game_state', getRoomState(room));
-      callback({ success: true });
-    } catch (err) {
-      console.error('[cancel_trade]', err);
-      callback({ success: false, error: 'Erro interno' });
-    }
-  });
-
-  // ── kick_player (Banker only) ────────────────────────────────────────────────
-  socket.on('kick_player', ({ roomCode, targetId } = {}, callback) => {
-    if (typeof callback !== 'function') return;
-    try {
-      const code = sanitizeString(roomCode, 6)?.toUpperCase();
-      const room = rooms[code];
-      if (!room) return callback({ success: false, error: 'Sala não encontrada' });
-      if (socket.id !== room.bankerId) return callback({ success: false, error: 'Apenas o bancário pode remover jogadores' });
-
-      const idx = room.players.findIndex((p) => p.id === targetId);
-      if (idx === -1) return callback({ success: false, error: 'Jogador não encontrado' });
-
-      const kickedPlayer = room.players[idx];
-      if (kickedPlayer.isBanker) return callback({ success: false, error: 'Não é possível remover o bancário' });
-
-      room.players.splice(idx, 1);
-
-      // Clean pending transfers & trades involving this player
-      room.pendingTransfers = room.pendingTransfers.filter(
-        (r) => r.fromId !== targetId && r.toId !== targetId
-      );
-      if (room.trades) {
-        room.trades = room.trades.filter(
-          (t) => t.initiatorId !== targetId && t.receiverId !== targetId
-        );
-      }
-
-      io.in(code).emit('update_game_state', getRoomState(room));
-      io.to(targetId).emit('notification', { type: 'error', message: 'Foste removido da sala pelo bancário' });
-      io.in(code).emit('game_notification', {
-        type: 'warning',
-        message: `${kickedPlayer.name} foi removido da sala`,
-      });
-
-      console.log(`[player:kicked] ${code} "${kickedPlayer.name}"`);
-      callback({ success: true });
-    } catch (err) {
-      console.error('[kick_player]', err);
-      callback({ success: false, error: 'Erro interno do servidor' });
-    }
-  });
-
   // ── disconnect ────────────────────────────────────────────────────────────────
   socket.on('disconnect', (reason) => {
     const roomCode = socket.data.roomCode;
@@ -1323,21 +1238,26 @@ io.on('connection', (socket) => {
       const room = rooms[roomCode];
       const player = room.players.find((p) => p.id === socket.id);
       if (player) {
-        io.in(roomCode).emit('player_disconnected', { playerName: player.name });
-        // Cancel pending transfers involving this player
-        const cancelled = room.pendingTransfers.filter(
-          (r) => r.fromId === socket.id || r.toId === socket.id
-        );
-        if (cancelled.length > 0) {
-          room.pendingTransfers = room.pendingTransfers.filter(
-            (r) => r.fromId !== socket.id && r.toId !== socket.id
-          );
-          io.to(room.bankerId).emit('transfers_cancelled', {
-            requestIds: cancelled.map((r) => r.requestId),
-            playerName: player.name,
-          });
-          io.to(room.bankerId).emit('update_game_state', getRoomState(room));
+        for (const trade of room.trades) {
+          if (!['requested', 'active'].includes(trade.status) || ![trade.initiatorId, trade.recipientId].includes(socket.id)) continue;
+          trade.status = 'cancelled';
+          trade.phase = 'CANCELLED';
+          trade.closedAt = new Date().toISOString();
+          const otherId = trade.initiatorId === socket.id ? trade.recipientId : trade.initiatorId;
+          io.to(otherId).emit('trade_cancelled', { tradeId: trade.id, playerName: player.name, message: `${player.name} desconectou; negociação encerrada.` });
         }
+
+        const auction = room.auction;
+        if (auction?.status === 'active' && auction.currentTurnPlayerId === socket.id && !auction.passedPlayerIds.includes(socket.id)) {
+          auction.passedPlayerIds.push(socket.id);
+          auction.lastAction = { playerId: socket.id, playerName: player.name, action: 'disconnected', time: new Date().toISOString() };
+          chooseAuctionLeader(room);
+          advanceAuction(room, socket.id);
+        }
+        io.in(roomCode).emit('player_disconnected', { playerName: player.name });
+        if (auction?.status === 'completed') io.in(roomCode).emit('auction_completed', auction);
+        else if (auction?.status === 'active') io.in(roomCode).emit('auction_update', auction);
+        io.in(roomCode).emit('update_game_state', getRoomState(room));
       }
     }
     console.log(`[-] disconnect ${socket.id}  (${reason})`);
@@ -1351,13 +1271,7 @@ function trimHistory(room) {
   }
 }
 
-// ─── Static File Serving ──────────────────────────────────────────────────────
-const clientDistPath = path.join(__dirname, '../client/dist');
-app.use(express.static(clientDistPath));
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(clientDistPath, 'index.html'));
-});
+// ─── Start ────────────────────────────────────────────────────────────────────
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || '3001', 10);

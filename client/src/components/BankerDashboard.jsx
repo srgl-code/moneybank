@@ -16,6 +16,8 @@ import SegmentedControl from './ui/SegmentedControl.jsx';
 import PropertyCard from './PropertyCard.jsx';
 import { propertiesData } from '../data/properties.js';
 import RankingList from './RankingList.jsx';
+import AuctionSetupModal from './AuctionSetupModal.jsx';
+import AuctionPanel from './AuctionPanel.jsx';
 
 const TradePanel = lazy(() => import('./TradePanel.jsx'));
 
@@ -35,6 +37,7 @@ export default function BankerDashboard() {
   const [confClose, setConfClose] = useState(false);
   const [cardPlayer, setCardPlayer] = useState(null);
   const [approvalReq, setApprovalReq] = useState(null);
+  const [openAuctionSetup, setOpenAuctionSetup] = useState(false);
   const [passGoPlayer, setPassGoPlayer] = useState(null); // null = closed, 'picking' = open picker
   const [finePlayer, setFinePlayer] = useState(null); // null = closed, 'picking' = open picker
   const [filterGroup, setFilterGroup] = useState('Todos');
@@ -70,16 +73,16 @@ export default function BankerDashboard() {
   };
 
   return (
-    <PageTransition className="min-h-screen bg-surface flex flex-col pb-32 md:pb-0">
+    <PageTransition className="min-h-screen bg-surface flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
       <AppHeader
         rightContent={
           <div className="flex items-center gap-2">
             <motion.button
               onClick={copyCode}
               whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface hover:bg-surface-container border border-outline-variant transition-all shadow-sm"
+              className="flex items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-4 rounded-xl bg-surface hover:bg-surface-container border border-outline-variant transition-all shadow-sm"
             >
-              <span className="font-headline font-black text-sm tracking-[0.25em] text-on-surface">Sala {roomCode}</span>
+              <span className="font-headline font-black text-xs sm:text-sm tracking-[0.12em] sm:tracking-[0.25em] text-on-surface"><span className="hidden sm:inline">Sala </span>{roomCode}</span>
               {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4 text-on-surface-variant" />}
             </motion.button>
             <button
@@ -103,7 +106,7 @@ export default function BankerDashboard() {
         </div>
 
         {/* Game Analytics Overview */}
-        <GameAnalytics players={players} totalFines={totalFines} />
+        <div className="hidden md:block"><GameAnalytics players={players} totalFines={totalFines} /></div>
 
         {/* Quick Actions */}
         <div className="grid grid-cols-3 gap-3">
@@ -122,15 +125,15 @@ export default function BankerDashboard() {
           <QuickActionButton 
             icon="🏠" 
             label="Leilão" 
-            onClick={() => startAuction(1)} // Mock starting an auction for property 1
+            onClick={() => setOpenAuctionSetup(true)}
             color="orange" 
           />
         </div>
 
         {/* Main Content Area */}
-        <section className="card flex flex-col flex-1 min-h-[600px] p-4 sm:p-6 mt-2 mb-16 md:mb-0">
+        <section className="card flex flex-col flex-1 min-h-0 md:min-h-[600px] p-3 sm:p-6 mt-2 mb-2 md:mb-0">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="w-full sm:w-auto overflow-x-auto hide-scrollbar">
+            <div className="hidden md:block w-full sm:w-auto overflow-x-auto hide-scrollbar">
               <SegmentedControl
                 options={[
                   { value: 'ranking', label: 'Ranking' },
@@ -302,8 +305,8 @@ export default function BankerDashboard() {
 
       {/* Keep bottom nav for mobile consistency, or could hide it. Let's hide it for banker if they prefer tabs. Actually, leave it for now. */}
       <BottomNav
-        activeTab={tab === 'players' ? 'ledger' : tab === 'approvals' ? 'ranking' : 'banker'}
-        onTabChange={(t) => setTab(t === 'ledger' ? 'players' : t === 'ranking' ? 'approvals' : 'history')}
+        activeTab={tab}
+        onTabChange={setTab}
         showBanker
       />
 
@@ -311,20 +314,13 @@ export default function BankerDashboard() {
       {/* Pass Go Player Picker */}
       <AnimatePresence>
         {passGoPlayer === 'picking' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <div
             className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}
             onClick={(e) => { if (e.target === e.currentTarget) setPassGoPlayer(null); }}
           >
-            <motion.div
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 60, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              className="w-full max-w-sm bg-surface rounded-3xl shadow-2xl border border-outline-variant/30 overflow-hidden"
+            <div
+              className="flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-outline-variant/30 bg-surface shadow-2xl sm:rounded-3xl"
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/15">
                 <h2 className="font-headline font-black text-base text-on-surface flex items-center gap-2">
@@ -334,7 +330,7 @@ export default function BankerDashboard() {
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-4 flex flex-col gap-2">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-2">
                 <p className="text-xs text-on-surface-variant text-center mb-1">Quem passou pela Largada?</p>
                 {players.length === 0 && <p className="text-sm text-center text-on-surface-variant opacity-60 py-6">Nenhum jogador na sala.</p>}
                 {players.map(p => (
@@ -355,28 +351,21 @@ export default function BankerDashboard() {
                   </button>
                 ))}
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Fine Player Picker */}
       <AnimatePresence>
         {finePlayer === 'picking' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <div
             className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)' }}
             onClick={(e) => { if (e.target === e.currentTarget) setFinePlayer(null); }}
           >
-            <motion.div
-              initial={{ y: 60, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 60, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              className="w-full max-w-sm bg-surface rounded-3xl shadow-2xl border border-outline-variant/30 overflow-hidden"
+            <div
+              className="flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-outline-variant/30 bg-surface shadow-2xl sm:rounded-3xl"
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/15">
                 <h2 className="font-headline font-black text-base text-on-surface flex items-center gap-2">
@@ -386,7 +375,7 @@ export default function BankerDashboard() {
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-4 flex flex-col gap-2">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-2">
                 <p className="text-xs text-on-surface-variant text-center mb-1">Qual jogador será multado?</p>
                 {players.length === 0 && <p className="text-sm text-center text-on-surface-variant opacity-60 py-6">Nenhum jogador na sala.</p>}
                 {players.map(p => (
@@ -407,8 +396,8 @@ export default function BankerDashboard() {
                   </button>
                 ))}
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -434,6 +423,18 @@ export default function BankerDashboard() {
           </Suspense>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {openAuctionSetup && (
+          <AuctionSetupModal
+            players={players}
+            ownedProperties={players.flatMap((player) => player.properties || [])}
+            onStart={startAuction}
+            onClose={() => setOpenAuctionSetup(false)}
+          />
+        )}
+      </AnimatePresence>
+      <AuctionPanel />
     </PageTransition>
   );
 }

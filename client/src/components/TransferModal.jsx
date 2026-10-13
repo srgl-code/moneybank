@@ -23,7 +23,7 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
 
-  const recipients = players.filter((p) => p.id !== currentPlayer?.id);
+  const recipients = players.filter((p) => p.id !== currentPlayer?.id && p.connected !== false);
   const sel = recipients.find((p) => p.id === toId);
   const parsed = parseInt(amount, 10) || 0;
   const canSubmit = !busy && toId && amount;
@@ -47,20 +47,13 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+    <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3"
       style={{ background: 'rgba(27,28,28,0.4)', backdropFilter: 'blur(8px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <motion.div
-        initial={{ y: 100, opacity: 0, scale: 0.95 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 100, opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="w-full max-w-md card-elevated overflow-hidden"
+      <div
+        className="w-full max-w-md max-h-[92dvh] card-elevated overflow-hidden rounded-t-3xl sm:rounded-3xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/15">
@@ -80,7 +73,7 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
           </button>
         </div>
 
-        <form onSubmit={submit} className="px-6 py-5 flex flex-col gap-5">
+        <form onSubmit={submit} className="max-h-[calc(92dvh-4rem)] overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-5 flex flex-col gap-5">
           {/* Balance pill */}
           {!currentPlayer?.isBanker && (
             <div className="text-center py-3 rounded-xl bg-surface-container-low border border-outline-variant/15">
@@ -109,7 +102,8 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
           {/* Recipients */}
           <div>
             <label className="field-label">Para quem?</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto overscroll-contain pr-1 sm:max-h-none sm:overflow-visible">
+              {recipients.length === 0 && <p className="col-span-2 py-4 text-center text-xs text-on-surface-variant">Nenhum jogador conectado para receber.</p>}
               {recipients.map((p) => {
                 const on = toId === p.id;
                 return (
@@ -186,7 +180,7 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
           {/* Submit */}
           <button
             type="submit" disabled={!canSubmit}
-            className="btn-primary"
+            className="btn-primary sticky bottom-0 z-10"
             style={{ opacity: canSubmit ? 1 : 0.35 }}
           >
             {busy ? (
@@ -198,7 +192,7 @@ export default function TransferModal({ onClose, players, currentPlayer }) {
             )}
           </button>
         </form>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

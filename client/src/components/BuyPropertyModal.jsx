@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check } from 'lucide-react';
 import PropertyCard from './PropertyCard.jsx';
 import { propertiesData } from '../data/properties.js';
@@ -34,19 +33,16 @@ export default function BuyPropertyModal({ onClose, onBuyProperty, ownedProperti
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-surface w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-elevated flex flex-col overflow-hidden"
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div
+        className="bg-surface w-full max-w-5xl max-h-[92dvh] rounded-t-3xl sm:rounded-2xl shadow-elevated flex flex-col overflow-hidden"
       >
         <div className="flex items-center justify-between p-4 border-b border-outline-variant">
           <h2 className="text-xl font-bold font-headline">Comprar Propriedade</h2>
           <button onClick={onClose} className="p-2 hover:bg-surface-container rounded-full text-on-surface-variant transition-colors"><X className="w-5 h-5" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-surface-container-low hide-scrollbar flex flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-surface-container-low hide-scrollbar flex flex-col">
           {/* Filters */}
           <div className="flex flex-wrap gap-2 justify-center mb-6 border-b border-outline-variant/30 pb-4 shrink-0">
             {groups.map(group => (
@@ -90,7 +86,7 @@ export default function BuyPropertyModal({ onClose, onBuyProperty, ownedProperti
           </div>
         </div>
 
-        <div className="p-4 border-t border-outline-variant bg-surface flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="sticky bottom-0 p-3 sm:p-4 border-t border-outline-variant bg-surface flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4">
           <div className="text-sm text-center sm:text-left">
             {selectedProp ? (
               <span>Selecionado: <strong className="text-lg text-primary">{selectedProp.name}</strong> por <strong>M$ {selectedProp.totalValue}</strong></span>
@@ -106,7 +102,7 @@ export default function BuyPropertyModal({ onClose, onBuyProperty, ownedProperti
             Solicitar Compra
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

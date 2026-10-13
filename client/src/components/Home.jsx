@@ -177,7 +177,7 @@ export default function Home() {
 
           {/* Card */}
           <motion.div
-            className="card-elevated p-7"
+            className="card-elevated p-4 sm:p-7"
             layout
             transition={{ type: 'spring', stiffness: 200, damping: 25 }}
           >
@@ -315,7 +315,7 @@ export default function Home() {
                         <Clipboard className="w-3.5 h-3.5" /> Colar
                       </button>
                     </div>
-                    <div className="flex gap-2 justify-between">
+                    <div className="grid grid-cols-6 gap-1.5">
                       {[0, 1, 2, 3, 4, 5].map((index) => (
                         <input
                           key={index}
@@ -356,7 +356,7 @@ export default function Home() {
                               }
                             }
                           }}
-                          className="w-12 h-14 bg-surface text-center font-headline font-black text-2xl border border-outline-variant rounded-lg shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all uppercase"
+                          className="w-full min-w-0 h-12 sm:w-12 sm:h-14 bg-surface text-center font-headline font-black text-xl sm:text-2xl border border-outline-variant rounded-lg shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all uppercase"
                           autoComplete="off"
                         />
                       ))}

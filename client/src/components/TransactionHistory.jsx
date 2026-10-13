@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpRight, ArrowDownLeft, RefreshCcw, Landmark, FileText, ArrowLeftRight } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, RefreshCcw, Landmark, FileText, ArrowLeftRight, Gavel, Home as House, Building2, Coins as HandCoins } from 'lucide-react';
 
 const fmt = (n) => `M$ ${Number(n).toLocaleString('pt-BR')}`;
 
@@ -11,10 +11,19 @@ const TYPE_CONFIG = {
   reset:    { icon: RefreshCcw,     color: 'text-tertiary', bg: 'bg-tertiary/10' },
   pass_go:  { icon: Landmark,       color: 'text-primary',  bg: 'bg-primary/10' },
   fine:     { icon: FileText,       color: 'text-error',    bg: 'bg-error/10' },
+  auction:  { icon: Gavel,          color: 'text-amber-700', bg: 'bg-amber-500/10' },
+  property_purchase: { icon: Building2, color: 'text-orange-600', bg: 'bg-orange-500/10' },
+  house_purchase: { icon: House, color: 'text-emerald-700', bg: 'bg-emerald-500/10' },
+  trade:    { icon: HandCoins,      color: 'text-secondary', bg: 'bg-secondary/10' },
 };
 
 function time(iso) {
-  try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+  try {
+    const date = new Date(iso);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    return `${isToday ? 'Hoje' : date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
   catch { return ''; }
 }
 
@@ -38,14 +47,23 @@ export default function TransactionHistory({ history, myId, myName }) {
       <AnimatePresence initial={false}>
         {[...entries].reverse().map((e, i) => {
           let type = e.type || 'transfer';
+          let displayAmount = e.amount;
+          let isCredit = type === 'credit' || type === 'pass_go';
           if (myId) {
-            if (e.toId === myId && type === 'transfer') type = 'credit';
-            if (e.fromId === myId && type === 'transfer') type = 'debit';
+            if (e.toId === myId && type === 'transfer') { type = 'credit'; isCredit = true; }
+            if (e.fromId === myId && type === 'transfer') { type = 'debit'; isCredit = false; }
+            if (e.type === 'trade' && e.details) {
+              const net = e.fromId === myId
+                ? Number(e.details.receiverMoney || 0) - Number(e.details.initiatorMoney || 0)
+                : Number(e.details.initiatorMoney || 0) - Number(e.details.receiverMoney || 0);
+              displayAmount = net === 0 ? null : Math.abs(net);
+              isCredit = net > 0;
+            }
           }
           
           const cfg = TYPE_CONFIG[type] ?? TYPE_CONFIG.transfer;
           const Icon = cfg.icon;
-          const isCredit = type === 'credit' || type === 'pass_go';
+          if (type === 'property_purchase' || type === 'house_purchase' || type === 'auction') isCredit = false;
 
           return (
             <motion.div
@@ -55,25 +73,25 @@ export default function TransactionHistory({ history, myId, myName }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
               transition={{ duration: 0.2 }}
-              className="flex items-center justify-between p-3.5 bg-surface-container/30 border border-outline-variant/10 rounded-2xl group hover:bg-surface-container/50 transition-colors"
+              className="flex flex-col gap-2.5 p-3.5 bg-surface-container/30 border border-outline-variant/10 rounded-2xl group hover:bg-surface-container/50 transition-colors sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl ${cfg.bg} flex items-center justify-center ${cfg.color} shadow-inner`}>
+              <div className="flex items-start gap-3 min-w-0 sm:items-center sm:gap-4">
+                <div className={`w-10 h-10 shrink-0 rounded-xl ${cfg.bg} flex items-center justify-center ${cfg.color} shadow-inner`}>
                    <Icon className="w-5 h-5" />
                 </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-on-surface text-sm truncate max-w-[200px]">
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-on-surface text-sm leading-snug break-words sm:truncate sm:max-w-[320px]">
                     {e.description || (type === 'transfer' ? `De ${e.fromName}` : 'Transação')}
                   </p>
-                  <p className="text-[10px] font-mono text-on-surface-variant/60 uppercase mt-0.5">
-                    {time(e.time)} • {type.replace('_', ' ')}
+                  <p className="text-[10px] font-mono text-on-surface-variant/70 uppercase mt-1">
+                    {time(e.time)} · {type.replace('_', ' ')}
                   </p>
                 </div>
               </div>
-              {e.amount != null && (
-                <div className="text-right">
-                   <span className={`font-headline font-black text-sm balance-text ${isCredit ? 'text-primary' : 'text-error'}`}>
-                    {isCredit ? '+' : '-'}{fmt(e.amount)}
+                {displayAmount != null && (
+                <div className="pl-[52px] text-left sm:pl-0 sm:text-right">
+                   <span className={`font-headline font-black text-base balance-text ${isCredit ? 'text-primary' : 'text-error'}`}>
+                  {isCredit ? '+' : '-'}{fmt(displayAmount)}
                   </span>
                 </div>
               )}

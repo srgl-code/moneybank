@@ -44,10 +44,14 @@ function reducer(state, action) {
       if (activeTrade) {
         const serverTrade = gameState.trades?.find(t => t.id === activeTrade.id);
         if (serverTrade) {
-          const activeRevision = Number(activeTrade.proposalRevision) || 0;
-          const serverRevision = Number(serverTrade.proposalRevision) || 0;
-          if (serverRevision > activeRevision || serverTrade.status !== activeTrade.status) {
-            activeTrade = serverTrade;
+          if (['completed', 'rejected', 'cancelled'].includes(serverTrade.status)) {
+            activeTrade = null;
+          } else {
+            const activeRevision = Number(activeTrade.proposalRevision) || 0;
+            const serverRevision = Number(serverTrade.proposalRevision) || 0;
+            if (serverRevision > activeRevision || serverTrade.status !== activeTrade.status) {
+              activeTrade = serverTrade;
+            }
           }
         } else if (activeTrade.status !== 'requested') {
           // If it's not in the server and not just requested, it might have been resolved/cancelled
@@ -56,7 +60,7 @@ function reducer(state, action) {
       } else if (gameState.trades) {
         // Auto-pick up an active trade if we don't have one set, but one exists for us
         const relevantTrade = gameState.trades.find(t => {
-          if (t.status === 'requested') return false;
+          if (!['active', 'banker_approval'].includes(t.status)) return false;
           if (t.initiatorId === state.mySocketId || t.receiverId === state.mySocketId) return true;
           if (isBanker && t.status === 'banker_approval') return true;
           return false;
@@ -65,6 +69,15 @@ function reducer(state, action) {
           activeTrade = relevantTrade;
         }
       }
+
+      const incomingTradeRequests = (gameState.trades ?? []).filter((trade) =>
+        trade.status === 'requested' && trade.receiverId === state.mySocketId
+      );
+      const validTradeRequestIds = new Set(incomingTradeRequests.map((trade) => trade.id));
+      const tradeRequests = activeTrade ? [] : [
+        ...state.tradeRequests.filter((trade) => validTradeRequestIds.has(trade.id)),
+        ...incomingTradeRequests.filter((trade) => !state.tradeRequests.some((existing) => existing.id === trade.id)),
+      ];
       
       return {
         ...state,
@@ -72,6 +85,7 @@ function reducer(state, action) {
         pendingTransfers: gameState.pendingTransfers ?? state.pendingTransfers ?? [],
         currentPlayer: updated ?? state.currentPlayer,
         activeTrade,
+        tradeRequests,
       };
     }
 
@@ -154,17 +168,24 @@ export function GameProvider({ children }) {
       // Automatically rejoin room on socket reconnect (e.g. network switch/phone lock)
       try {
         const saved = JSON.parse(localStorage.getItem('moneybank_session') || '{}');
-        if (saved?.roomCode && saved?.sessionId) {
+        if (saved?.roomCode && (saved?.sessionId || saved?.playerName)) {
           socket.emit(
             'join_room',
-            { roomCode: saved.roomCode, sessionId: saved.sessionId },
+            { roomCode: saved.roomCode, sessionId: saved.sessionId, playerName: saved.playerName, avatar: saved.avatar, color: saved.color },
             (res) => {
               if (res && res.success) {
+                localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId, playerName: res.player.name, avatar: res.player.avatar, color: res.player.color }));
+                dispatch({ type: 'SET_CONNECTING', payload: false });
                 dispatch({ type: 'SET_MY_ID',         payload: socket.id });
                 dispatch({ type: 'SET_ROOM',           payload: res.roomCode });
                 dispatch({ type: 'SET_CURRENT_PLAYER', payload: res.player });
                 dispatch({ type: 'UPDATE_GAME_STATE',  payload: res.gameState });
                 dispatch({ type: 'SET_SCREEN',         payload: res.player.isBanker ? 'banker' : 'player' });
+                addToast('✅ Sessão restaurada com sucesso', 'success');
+              } else {
+                dispatch({ type: 'SET_CONNECTING', payload: false });
+                localStorage.removeItem('moneybank_session');
+                addToast('Sessão anterior expirou', 'warning');
               }
             }
           );
@@ -209,8 +230,31 @@ export function GameProvider({ children }) {
       addToast(`📵 ${playerName} desconectou`, 'warning');
     };
 
+    const onPlayerLeft = ({ playerName }) => {
+      addToast(`🚪 ${playerName} saiu da partida.`, 'info');
+    };
+
+    const onPlayerKicked = ({ playerName }) => {
+      addToast(`${playerName || 'Você'} foi removido da sala pelo bancário.`, 'error', 6000);
+      localStorage.removeItem('moneybank_session');
+      socket.disconnect();
+      dispatch({ type: 'RESET' });
+    };
+
     const onBalancesReset = ({ startingBalance }) => {
       addToast(`🔄 Saldos reiniciados para M$${Number(startingBalance).toLocaleString('pt-BR')}`, 'info');
+    };
+
+    const onAuctionStarted = (auction) => {
+      addToast(`🔨 Leilão iniciado: ${auction.propertyId}.`, 'info', 6000);
+    };
+    const onAuctionCompleted = (auction) => {
+      addToast(auction.winnerName
+        ? `🏆 ${auction.winnerName} venceu ${auction.propertyId} por M$ ${Number(auction.currentBid).toLocaleString('pt-BR')}.`
+        : `Leilão de ${auction.propertyId} encerrado sem venda.`, auction.winnerName ? 'success' : 'warning', 7000);
+    };
+    const onAuctionCancelled = (auction) => {
+      addToast(`Leilão de ${auction.propertyId} cancelado pelo Banco.`, 'warning');
     };
 
     const onRoomClosed = () => {
@@ -287,7 +331,12 @@ export function GameProvider({ children }) {
     socket.on('player_joined',        onPlayerJoined);
     socket.on('player_rejoined',      onPlayerRejoined);
     socket.on('player_disconnected',  onPlayerDisconnected);
+    socket.on('player_left',         onPlayerLeft);
+    socket.on('player_kicked',       onPlayerKicked);
     socket.on('balances_reset',       onBalancesReset);
+    socket.on('auction_started',      onAuctionStarted);
+    socket.on('auction_completed',    onAuctionCompleted);
+    socket.on('auction_cancelled',    onAuctionCancelled);
     socket.on('room_closed',          onRoomClosed);
     socket.on('connect_error',        onConnectError);
     socket.on('trade_requested',      onTradeRequested);
@@ -310,7 +359,12 @@ export function GameProvider({ children }) {
       socket.off('player_joined',       onPlayerJoined);
       socket.off('player_rejoined',     onPlayerRejoined);
       socket.off('player_disconnected', onPlayerDisconnected);
+      socket.off('player_left',         onPlayerLeft);
+      socket.off('player_kicked',       onPlayerKicked);
       socket.off('balances_reset',      onBalancesReset);
+      socket.off('auction_started',     onAuctionStarted);
+      socket.off('auction_completed',   onAuctionCompleted);
+      socket.off('auction_cancelled',   onAuctionCancelled);
       socket.off('room_closed',         onRoomClosed);
       socket.off('connect_error',       onConnectError);
       socket.off('trade_requested',     onTradeRequested);
@@ -325,7 +379,7 @@ export function GameProvider({ children }) {
     };
   }, [addToast, state.currentPlayer?.isBanker]);
 
-  // ── Auto-reconnect from saved session on mount ──────────────────────────────
+  // ── Restore sessions through the single socket connect listener ──────────────
   useEffect(() => {
     const saved = localStorage.getItem('moneybank_session');
     if (!saved) return;
@@ -338,44 +392,13 @@ export function GameProvider({ children }) {
       return;
     }
 
-    if (!session?.roomCode || !session?.sessionId) {
+    if (!session?.roomCode || (!session?.sessionId && !session?.playerName)) {
       localStorage.removeItem('moneybank_session');
       return;
     }
 
     dispatch({ type: 'SET_CONNECTING', payload: true });
-
-    function doRejoin() {
-      socket.emit(
-        'join_room',
-        { roomCode: session.roomCode, sessionId: session.sessionId },
-        (res) => {
-          dispatch({ type: 'SET_CONNECTING', payload: false });
-          if (res && res.success) {
-            dispatch({ type: 'SET_MY_ID',          payload: socket.id });
-            dispatch({ type: 'SET_ROOM',            payload: res.roomCode });
-            dispatch({ type: 'SET_CURRENT_PLAYER',  payload: res.player });
-            dispatch({ type: 'UPDATE_GAME_STATE',   payload: res.gameState });
-            dispatch({ type: 'SET_SCREEN',          payload: res.player.isBanker ? 'banker' : 'player' });
-            addToast('✅ Sessão restaurada com sucesso', 'success');
-          } else {
-            localStorage.removeItem('moneybank_session');
-            addToast('Sessão anterior expirou', 'warning');
-          }
-        }
-      );
-    }
-
-    if (socket.connected) {
-      doRejoin();
-    } else {
-      socket.connect();
-      socket.once('connect', doRejoin);
-      socket.once('connect_error', () => {
-        dispatch({ type: 'SET_CONNECTING', payload: false });
-        localStorage.removeItem('moneybank_session');
-      });
-    }
+    if (!socket.connected) socket.connect();
   }, [addToast]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
@@ -409,7 +432,7 @@ export function GameProvider({ children }) {
         socket.emit('create_room', { playerName, startingBalance, startingPassGo, photoUrl }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
-            localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
+            localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId, playerName, avatar: '🏦' }));
             saveRecentRoom(res.roomCode, res.sessionId, {
               bankerName: playerName,
               playerCount: 1,
@@ -460,7 +483,7 @@ export function GameProvider({ children }) {
         socket.emit('join_room', { roomCode, playerName, avatar, color, sessionId: effectiveSessionId, photoUrl }, (res) => {
           dispatch({ type: 'SET_CONNECTING', payload: false });
           if (res.success) {
-            localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId }));
+            localStorage.setItem('moneybank_session', JSON.stringify({ roomCode: res.roomCode, sessionId: res.sessionId, playerName: res.player.name, avatar: res.player.avatar, color: res.player.color }));
             const banker = res.gameState?.players?.find(p => p.isBanker);
             saveRecentRoom(res.roomCode, res.sessionId, {
               bankerName: banker?.name || '?',
@@ -558,11 +581,22 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const leaveRoom = useCallback(() => {
-    localStorage.removeItem('moneybank_session');
-    socket.disconnect();
-    dispatch({ type: 'RESET' });
-  }, []);
+  const leaveRoom = useCallback(() => new Promise((resolve) => {
+    let finished = false;
+    let timeout;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      localStorage.removeItem('moneybank_session');
+      socket.disconnect();
+      dispatch({ type: 'RESET' });
+      resolve();
+    };
+    if (!socket.connected || !state.roomCode) return finish();
+    timeout = setTimeout(finish, 1500);
+    socket.emit('leave_room', { roomCode: state.roomCode }, finish);
+  }), [state.roomCode]);
 
   const passGo = useCallback((amount = 200) =>
     new Promise((resolve, reject) => {
@@ -580,9 +614,33 @@ export function GameProvider({ children }) {
     }),
   [state.roomCode]);
 
-  const startAuction = useCallback((propertyId, startingBid) =>
+  const startAuction = useCallback((auction) =>
     new Promise((resolve, reject) => {
-      socket.emit('start_auction', { roomCode: state.roomCode, propertyId, startingBid }, (res) =>
+      socket.emit('start_auction', { roomCode: state.roomCode, ...auction }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const placeAuctionBid = useCallback((auctionId, amount) =>
+    new Promise((resolve, reject) => {
+      socket.emit('place_auction_bid', { roomCode: state.roomCode, auctionId, amount }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const passAuctionTurn = useCallback((auctionId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('pass_auction_turn', { roomCode: state.roomCode, auctionId }, (res) =>
+        res.success ? resolve(res) : reject(new Error(res.error))
+      );
+    }),
+  [state.roomCode]);
+
+  const cancelAuction = useCallback((auctionId) =>
+    new Promise((resolve, reject) => {
+      socket.emit('cancel_auction', { roomCode: state.roomCode, auctionId }, (res) =>
         res.success ? resolve(res) : reject(new Error(res.error))
       );
     }),
@@ -695,6 +753,9 @@ export function GameProvider({ children }) {
     passGo,
     collectFine,
     startAuction,
+    placeAuctionBid,
+    passAuctionTurn,
+    cancelAuction,
     assignProperty,
     removeProperty,
     requestTrade,

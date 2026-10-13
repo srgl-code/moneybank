@@ -147,23 +147,16 @@ export default function ApprovalModal({ req, isBankTransaction, availableBalance
   const canApprove = payerCorrect && receiverCorrect;
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4"
+    <div
+      className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
       style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)' }}
       onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}
     >
-      <motion.div
-        initial={{ y: 80, opacity: 0, scale: 0.95 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 80, opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-        className="w-full max-w-md bg-surface rounded-[2rem] overflow-hidden shadow-2xl border border-outline-variant/30 flex flex-col"
+      <div
+        className="flex max-h-[94dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-outline-variant/30 bg-surface shadow-2xl sm:rounded-[2rem]"
       >
         {/* Header */}
-        <div className="bg-surface-container-highest flex items-center justify-between px-6 py-4 border-b border-outline-variant/30">
+        <div className="flex shrink-0 items-center justify-between border-b border-outline-variant/30 bg-surface-container-highest px-4 py-3 sm:px-6 sm:py-4">
           <h2 className="font-headline font-black text-sm uppercase tracking-[0.15em] text-primary flex items-center gap-2">
             <span className="material-symbols-outlined text-lg">fact_check</span> Aprovar Pedido
           </h2>
@@ -177,7 +170,7 @@ export default function ApprovalModal({ req, isBankTransaction, availableBalance
           </button>
         </div>
 
-        <div className="p-5 flex flex-col gap-4 max-h-[85vh] overflow-y-auto hide-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-4 hide-scrollbar">
           {/* Display Screen */}
           <div className="bg-[#dcfce7] rounded-xl p-4 border-4 border-surface-container-highest shadow-inner relative overflow-hidden text-center">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/pixel-weave.png')] opacity-20 pointer-events-none"></div>
@@ -284,7 +277,7 @@ export default function ApprovalModal({ req, isBankTransaction, availableBalance
           </AnimatePresence>
 
           {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="sticky bottom-0 flex gap-2 bg-surface pt-2 sm:gap-3">
             <button
               type="button"
               onClick={handleReject}
@@ -311,7 +304,7 @@ export default function ApprovalModal({ req, isBankTransaction, availableBalance
             </button>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

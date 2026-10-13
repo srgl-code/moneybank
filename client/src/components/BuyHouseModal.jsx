@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { X, Home, Plus, Minus, ArrowRight, AlertCircle, CheckCircle, Sparkles } from 'lucide-react';
 
 const colorMap = {
@@ -71,15 +70,11 @@ export default function BuyHouseModal({ property, currentHouses = 0, playerBalan
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        transition={{ type: 'spring', stiffness: 350, damping: 28 }}
-        className="w-full max-w-lg bg-surface rounded-3xl shadow-2xl border border-outline-variant/30 overflow-hidden flex flex-col"
+      <div
+        className="w-full max-w-lg max-h-[94dvh] bg-surface rounded-t-3xl sm:rounded-3xl shadow-2xl border border-outline-variant/30 overflow-hidden flex flex-col"
       >
         {/* Header with Property Identity */}
         <div
@@ -104,7 +99,7 @@ export default function BuyHouseModal({ property, currentHouses = 0, playerBalan
           </h2>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh] hide-scrollbar">
+        <div className="min-h-0 flex-1 p-4 sm:p-6 space-y-5 sm:space-y-6 overflow-y-auto overscroll-contain pb-[calc(1rem+env(safe-area-inset-bottom))] hide-scrollbar">
 
           {/* Status Atual & Prévia de Evolução */}
           <div className="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/40 space-y-3">
@@ -254,7 +249,7 @@ export default function BuyHouseModal({ property, currentHouses = 0, playerBalan
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="sticky bottom-0 flex gap-2 sm:gap-3 pt-2 pb-1 bg-surface">
             <button
               type="button"
               onClick={onClose}
@@ -275,7 +270,7 @@ export default function BuyHouseModal({ property, currentHouses = 0, playerBalan
           </div>
 
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

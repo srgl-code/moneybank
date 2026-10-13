@@ -19,6 +19,7 @@ import { NotificationCenter } from './features/NotificationCenter.jsx';
 import { QuickActionButton } from './ui/QuickActionButton.jsx';
 import SegmentedControl from './ui/SegmentedControl.jsx';
 import TradeRequestModal from './TradeRequestModal.jsx';
+import AuctionPanel from './AuctionPanel.jsx';
 import { timeAgo } from '../utils/format.js';
 
 const TradePanel = lazy(() => import('./TradePanel.jsx'));
@@ -26,6 +27,7 @@ const TradePanel = lazy(() => import('./TradePanel.jsx'));
 export default function PlayerDashboard() {
   const { gameState, currentPlayer, activeTrade, leaveRoom, collectFine, requestTransfer, addToast } = useGame();
   const [tab, setTab] = useState('ledger');
+  const [mobileTab, setMobileTab] = useState('home');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [openBuy, setOpenBuy] = useState(false);
   const [selectedPropForHouse, setSelectedPropForHouse] = useState(null);
@@ -35,7 +37,9 @@ export default function PlayerDashboard() {
   const pendingHouseRequests = (gameState?.pendingTransfers ?? []).filter((request) =>
     request.fromId === currentPlayer?.id && request.metadata?.type === 'buy_house'
   );
+  const recentHistory = (gameState?.history ?? []).filter((entry) => entry.fromId === currentPlayer?.id || entry.toId === currentPlayer?.id).slice(-4);
   const human = all.filter((p) => !p.isBanker);
+  const topPlayers = [...human].sort((a, b) => b.balance - a.balance).slice(0, 3);
   
   // Extract sparkline data
   const historyData = currentPlayer?.balanceHistory?.map(h => h.balance) || [];
@@ -96,7 +100,7 @@ export default function PlayerDashboard() {
   };
 
   return (
-    <PageTransition className="min-h-screen bg-surface flex flex-col pb-32 md:pb-0">
+    <PageTransition className="min-h-screen bg-surface flex flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom))] md:pb-0">
       <AppHeader
         rightContent={
           <div className="flex items-center gap-2">
@@ -113,7 +117,92 @@ export default function PlayerDashboard() {
         }
       />
 
-      <main id="main-content" className="flex-1 max-w-screen-xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main id="main-content" className="md:hidden flex-1 w-full px-4 pt-4 pb-4 space-y-4">
+        {mobileTab === 'home' && (
+          <div className="space-y-4">
+            <section className="rounded-3xl bg-surface-container-low p-5 border border-outline-variant/60">
+              <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Saldo atual</p>
+              <div className="mt-1 flex min-w-0 items-baseline justify-between gap-2">
+                <AnimatedBalance value={bal} size="md" className="min-w-0 whitespace-nowrap text-on-surface" />
+                <span className="max-w-24 shrink text-right text-xs text-on-surface-variant">{currentPlayer?.name}</span>
+              </div>
+              <div className="mt-3"><MiniChart data={sparklineData} color="#14b8a6" height={34} /></div>
+            </section>
+
+            <section aria-label="Ações rápidas" className="grid grid-cols-3 gap-2">
+              <button type="button" onClick={() => setOpenTransfer(true)} className="min-h-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-primary text-white font-bold text-xs active:scale-[0.98]">
+                <span className="text-xl">💸</span><span>Transferir</span>
+              </button>
+              <button type="button" onClick={() => setOpenBuy(true)} className="min-h-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-orange-500 text-white font-bold text-xs active:scale-[0.98]">
+                <span className="text-xl">🏠</span><span>Comprar</span>
+              </button>
+              <button type="button" onClick={() => setMobileTab('trade')} className="min-h-20 flex flex-col items-center justify-center gap-1 rounded-2xl bg-surface-container-high text-on-surface font-bold text-xs active:scale-[0.98]">
+                <span className="text-xl">🤝</span><span>Negociar</span>
+              </button>
+            </section>
+
+            <button type="button" onClick={() => setMobileTab('properties')} className="w-full flex items-center justify-between gap-3 rounded-2xl border border-outline-variant/60 bg-surface p-4 text-left active:bg-surface-container-low">
+              <span className="min-w-0"><span className="block font-bold text-on-surface">Minhas propriedades</span><span className="block text-xs text-on-surface-variant mt-0.5">{currentPlayer?.properties?.length || 0} terrenos · casas e hotéis</span></span>
+              <span className="shrink-0 text-sm font-bold text-primary">Ver →</span>
+            </button>
+
+            <section className="rounded-2xl border border-outline-variant/60 bg-surface p-4">
+              <div className="flex items-center justify-between mb-2"><h2 className="font-bold text-on-surface">Atividade recente</h2><button type="button" onClick={() => setMobileTab('ledger')} className="text-xs font-bold text-primary">Extrato completo</button></div>
+              {recentHistory.length
+                ? <TransactionHistory history={recentHistory} myId={currentPlayer?.id} myName={currentPlayer?.name} />
+                : <p className="py-3 text-center text-xs text-on-surface-variant">Nenhuma movimentação por enquanto.</p>}
+            </section>
+
+            <section className="rounded-2xl border border-outline-variant/60 bg-surface p-4">
+              <div className="flex items-center justify-between mb-3"><h2 className="font-bold text-on-surface">Ranking</h2><button type="button" onClick={() => setMobileTab('more')} className="text-xs font-bold text-primary">Ver todos</button></div>
+              <div className="space-y-2">
+                {topPlayers.map((player, index) => (
+                  <div key={player.id} className="flex items-center gap-3 min-w-0">
+                    <span className="w-6 text-center text-sm font-black text-on-surface-variant">{index + 1}</span>
+                    <PinDisplay avatar={player.avatar} color={player.color} photo={player.photo} size={28} />
+                    <span className="flex-1 min-w-0 truncate text-sm font-semibold">{player.name}</span>
+                    <span className="shrink-0 text-xs font-black balance-text">{`M$ ${Number(player.balance).toLocaleString('pt-BR')}`}</span>
+                  </div>
+                ))}
+                {topPlayers.length === 0 && <p className="text-xs text-on-surface-variant">Ainda não há outros jogadores.</p>}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {mobileTab === 'properties' && (
+          <PlayerPropertiesTab
+            properties={currentPlayer?.properties || []}
+            houses={currentPlayer?.houses || {}}
+            pendingHouseRequests={pendingHouseRequests}
+            onBuyPropertyClick={() => setOpenBuy(true)}
+            onSelectPropertyForHouse={setSelectedPropForHouse}
+          />
+        )}
+
+        {mobileTab === 'ledger' && (
+          <section className="rounded-2xl border border-outline-variant/60 bg-surface p-4">
+            <h2 className="font-headline font-bold text-lg mb-3">Extrato</h2>
+            <TransactionHistory history={gameState?.history ?? []} myId={currentPlayer?.id} myName={currentPlayer?.name} />
+          </section>
+        )}
+
+        {mobileTab === 'trade' && (
+          <section className="space-y-3">
+            <div><h2 className="font-headline font-bold text-lg">Negociar</h2><p className="text-xs text-on-surface-variant">Escolha um jogador para convidá-lo.</p></div>
+            <RankingList players={all} myId={currentPlayer?.id} />
+          </section>
+        )}
+
+        {mobileTab === 'more' && (
+          <section className="space-y-3">
+            <h2 className="font-headline font-bold text-lg">Jogadores</h2>
+            <RankingList players={all} myId={currentPlayer?.id} />
+          </section>
+        )}
+      </main>
+
+      <main id="main-content-desktop" className="hidden md:block flex-1 max-w-screen-xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         
         {/* Top Section: Balance & Actions */}
         <div className="grid grid-cols-1 gap-6">
@@ -233,7 +322,7 @@ export default function PlayerDashboard() {
 
       </main>
 
-      <BottomNav activeTab={tab} onTabChange={handleTabChange} />
+      <BottomNav activeTab={mobileTab} onTabChange={setMobileTab} />
 
       {openTransfer && (
         <TransferModal
@@ -274,6 +363,7 @@ export default function PlayerDashboard() {
       </AnimatePresence>
 
       <TradeRequestModal />
+      <AuctionPanel />
     </PageTransition>
   );
 }

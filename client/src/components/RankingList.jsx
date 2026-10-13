@@ -66,7 +66,7 @@ export default function RankingList({ players, myId, isBanker }) {
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ opacity: { duration: 0.2 } }}
                 className={`
-                  relative flex items-center gap-3 px-4 py-3 rounded-2xl overflow-hidden transition-all
+                  relative flex min-w-0 flex-wrap items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 rounded-2xl overflow-hidden transition-all
                   ${isFirst
                     ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 shadow-sm'
                     : isMe
@@ -119,14 +119,14 @@ export default function RankingList({ players, myId, isBanker }) {
                     {isMe ? `${p.name} (Você)` : p.name}
                   </p>
                   <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${isFirst ? 'text-amber-500' : isMe ? 'text-teal-500' : 'text-on-surface-variant opacity-60'}`}>
-                    {isFirst ? '1º lugar' : isMe ? 'Você' : `${rank}º lugar`}
+                    {isFirst ? '1º lugar' : isMe ? 'Você' : `${rank}º lugar`}{p.connected === false && !isMe ? ' · Offline' : ''}
                   </p>
                 </div>
 
                 {/* Balance & Actions */}
                 <div className="flex-shrink-0 flex items-center gap-2 text-right">
                   <div className="flex flex-col items-end mr-1">
-                    <span className={`font-headline font-black text-base tracking-tight ${isFirst ? 'text-amber-700' : isMe ? 'text-teal-700' : 'text-on-surface'}`}>
+                    <span className={`font-headline font-black text-xs sm:text-base tracking-tight whitespace-nowrap ${isFirst ? 'text-amber-700' : isMe ? 'text-teal-700' : 'text-on-surface'}`}>
                       {fmt(p.balance)}
                     </span>
                   </div>
@@ -157,7 +157,7 @@ export default function RankingList({ players, myId, isBanker }) {
                       </button>
                     )
                   ) : (
-                    !isMe && (
+                    !isMe && p.connected !== false && (
                       <button
                         onClick={() => handleRequestTrade(p)}
                         className={`p-2 rounded-full transition-colors ${

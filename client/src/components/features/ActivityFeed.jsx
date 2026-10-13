@@ -10,6 +10,10 @@ const TYPE_CONFIG = {
   reset:    { icon: '🔄', label: 'Reinício',    color: 'text-slate-500',   bg: 'bg-slate-50 border-slate-100',     sign: ''  },
   fine:     { icon: '⚖️', label: 'Multa',       color: 'text-orange-600',  bg: 'bg-orange-50 border-orange-100',   sign: '-' },
   pass_go:  { icon: '🏁', label: 'Largada',     color: 'text-teal-600',    bg: 'bg-teal-50 border-teal-100',       sign: '+' },
+  property_purchase: { icon: '🏘️', label: 'Compra de terreno', color: 'text-orange-700', bg: 'bg-orange-50 border-orange-100', sign: '-' },
+  house_purchase: { icon: '🏠', label: 'Construção', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-100', sign: '-' },
+  trade: { icon: '🤝', label: 'Negociação', color: 'text-teal-700', bg: 'bg-teal-50 border-teal-100', sign: '' },
+  auction: { icon: '🔨', label: 'Leilão', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-100', sign: '-' },
 };
 
 function fmtAmt(n) {

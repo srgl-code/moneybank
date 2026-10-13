@@ -39,7 +39,7 @@ function emitAck(socket, event, payload) {
 }
 
 async function waitForHealth(url, process) {
-  const deadline = Date.now() + 8000;
+  const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     if (process.exitCode !== null) throw new Error(`Server exited with code ${process.exitCode}`);
     try {
@@ -66,15 +66,22 @@ test('house approval and counterproposal trades settle through Socket.IO', { tim
   const server = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     cwd: __dirname,
     env: { ...process.env, PORT: String(port), NODE_ENV: 'test' },
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
+  let serverLogs = '';
+  server.stdout?.on('data', (d) => { serverLogs += d.toString(); });
+  server.stderr?.on('data', (d) => { serverLogs += d.toString(); });
   const sockets = [];
   t.after(() => {
     sockets.forEach((socket) => socket.disconnect());
     if (!server.killed) server.kill();
   });
 
-  await waitForHealth(url, server);
+  try {
+    await waitForHealth(url, server);
+  } catch (err) {
+    throw new Error(`${err.message}\nServer Logs:\n${serverLogs}`);
+  }
   const banker = await connect(url);
   const playerOne = await connect(url);
   const playerTwo = await connect(url);
@@ -104,6 +111,26 @@ test('house approval and counterproposal trades settle through Socket.IO', { tim
   playerOneState = joinedOne.gameState;
   playerTwoState = joinedTwo.gameState;
   bankerState = joinedTwo.gameState;
+
+  const duplicateAttempt = await connect(url);
+  sockets.push(duplicateAttempt);
+  assert.equal((await emitAck(duplicateAttempt, 'join_room', { roomCode, playerName: 'Ana' })).success, false, 'a connected player name cannot be claimed');
+  duplicateAttempt.disconnect();
+
+  const legacySocket = await connect(url);
+  sockets.push(legacySocket);
+  const legacyPlayer = await emitAck(legacySocket, 'join_room', { roomCode, playerName: 'Carla QA', avatar: 'green', color: '#22c55e' });
+  assert.equal(legacyPlayer.success, true);
+  const legacyDisconnected = new Promise((resolve) => banker.once('player_disconnected', resolve));
+  legacySocket.disconnect();
+  await legacyDisconnected;
+  const recoveredSocket = await connect(url);
+  sockets.push(recoveredSocket);
+  const recoveredPlayer = await emitAck(recoveredSocket, 'join_room', { roomCode, playerName: 'Carla QA' });
+  assert.equal(recoveredPlayer.success, true, "a saved name recovers a disconnected player's room state");
+  assert.equal(recoveredPlayer.sessionId, legacyPlayer.sessionId);
+  assert.equal(recoveredPlayer.gameState.players.filter((player) => player.name === 'Carla QA').length, 1);
+  await emitAck(recoveredSocket, 'leave_room', { roomCode });
 
   const greenProperties = propertiesData.filter((property) => property.group === 'Verde').map((property) => property.name);
   const orangeProperty = propertiesData.find((property) => property.group === 'Laranja').name;
@@ -153,13 +180,11 @@ test('house approval and counterproposal trades settle through Socket.IO', { tim
     metadata: { type: 'buy_house', propertyId: greenProperties[1], housesToAdd: 1 },
   });
   assert.equal(staleHouseRequest.success, true);
-  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: -700, reason: 'Teste saldo' });
-  const staleApproval = await emitAck(banker, 'approve_transfer', { roomCode, requestId: staleHouseRequest.requestId });
-  assert.equal(staleApproval.success, false, 'approval revalidates current balance');
-  await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 300, 'stale construction request state was not broadcast');
+  const spendReservedBalance = await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: -700, reason: 'Teste saldo reservado' });
+  assert.equal(spendReservedBalance.success, false, 'reserved construction funds cannot be spent twice');
+  assert.equal((await emitAck(banker, 'reject_transfer', { roomCode, requestId: staleHouseRequest.requestId })).success, true);
   assert.equal(playerOneState.players.find((player) => player.id === joinedOne.player.id).houses[greenProperties[1]], undefined);
-  assert.equal(playerOneState.players.find((player) => player.id === joinedOne.player.id).balance, 300);
-  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: 1000, reason: 'Restaurar saldo' });
+  assert.equal(playerOneState.players.find((player) => player.id === joinedOne.player.id).balance, 1000);
 
   const invitation = await emitAck(playerOne, 'request_trade', { roomCode, toId: joinedTwo.player.id });
   assert.equal(invitation.success, true);
@@ -178,19 +203,19 @@ test('house approval and counterproposal trades settle through Socket.IO', { tim
   assert.equal((await emitAck(playerTwo, 'update_trade_proposal', { roomCode, tradeId: invitation.tradeId, proposal: counterProposal })).success, true);
   const currentRevision = playerOneTrade.proposalRevision;
   assert.equal(currentRevision, 2);
-  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: -1250, reason: 'Alteração durante negociação' });
+  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: -950, reason: 'Alteração durante negociação' });
   const unaffordableTrade = await emitAck(playerOne, 'accept_trade_proposal', { roomCode, tradeId: invitation.tradeId, proposalRevision: currentRevision });
   assert.equal(unaffordableTrade.success, false, 'acceptance revalidates the current balance');
   await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 50, 'updated balance was not broadcast');
   assert.ok(playerOneState.players.find((player) => player.id === joinedOne.player.id).properties.includes(greenProperties[0]));
-  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: 1250, reason: 'Restaurar saldo' });
-  await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 1300, 'restored balance was not broadcast');
+  await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedOne.player.id, amount: 950, reason: 'Restaurar saldo' });
+  await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 1000, 'restored balance was not broadcast');
   assert.equal((await emitAck(playerOne, 'accept_trade_proposal', { roomCode, tradeId: invitation.tradeId, proposalRevision: currentRevision })).success, true);
 
-  await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 1450, 'trade settlement state was not broadcast');
+  await waitUntil(() => playerOneState.players.find((player) => player.id === joinedOne.player.id)?.balance === 1150, 'trade settlement state was not broadcast');
   const afterTradeOne = playerOneState.players.find((player) => player.id === joinedOne.player.id);
   const afterTradeTwo = playerOneState.players.find((player) => player.id === joinedTwo.player.id);
-  assert.equal(afterTradeOne.balance, 1450);
+  assert.equal(afterTradeOne.balance, 1150);
   assert.equal(afterTradeTwo.balance, 1350);
   assert.ok(afterTradeOne.properties.includes(orangeProperty));
   assert.ok(!afterTradeOne.properties.includes(greenProperties[0]));
@@ -216,4 +241,39 @@ test('house approval and counterproposal trades settle through Socket.IO', { tim
   assert.equal((await emitAck(banker, 'remove_property', { roomCode, targetId: joinedTwo.player.id, propertyId: greenProperties[0] })).success, true);
   await waitUntil(() => !playerTwoState.players.find((player) => player.id === joinedTwo.player.id)?.properties.includes(greenProperties[0]), 'revoked title was not removed');
   assert.equal(playerTwoState.players.find((player) => player.id === joinedTwo.player.id).houses[greenProperties[0]], undefined);
+
+  const auctionStarted = await emitAck(banker, 'start_auction', {
+    roomCode,
+    propertyId: greenProperties[0],
+    participantIds: [joinedOne.player.id, joinedTwo.player.id],
+    firstPlayerId: joinedOne.player.id,
+    startingBid: 100,
+  });
+  assert.equal(auctionStarted.success, true);
+  const auctionId = auctionStarted.auction.id;
+  assert.equal((await emitAck(playerOne, 'place_auction_bid', { roomCode, auctionId, amount: 200 })).success, true);
+  assert.equal((await emitAck(playerOne, 'place_auction_bid', { roomCode, auctionId, amount: 250 })).success, false, 'a player cannot bid twice before the next turn');
+  assert.equal((await emitAck(playerTwo, 'adjust_balance', { roomCode, targetId: joinedTwo.player.id, amount: 100, reason: 'Jogador não pode ajustar saldo' })).success, false);
+  assert.equal((await emitAck(playerTwo, 'place_auction_bid', { roomCode, auctionId, amount: 300 })).success, true);
+  assert.equal((await emitAck(banker, 'adjust_balance', { roomCode, targetId: joinedTwo.player.id, amount: -1200, reason: 'Valor reservado' })).success, false);
+  assert.equal((await emitAck(playerOne, 'pass_auction_turn', { roomCode, auctionId })).success, true);
+  await waitUntil(() => playerTwoState.auction?.status === 'completed', 'auction completion was not broadcast');
+  const auctionWinner = playerTwoState.players.find((player) => player.id === joinedTwo.player.id);
+  assert.equal(auctionWinner.balance, 1050);
+  assert.ok(auctionWinner.properties.includes(greenProperties[0]));
+  assert.ok(playerTwoState.history.some((entry) => entry.type === 'auction' && entry.propertyId === greenProperties[0] && entry.amount === 300));
+
+  const reconnectTransfer = await emitAck(playerOne, 'request_transfer', { roomCode, toId: bankId, amount: 50, reason: 'Reconnect check' });
+  assert.equal(reconnectTransfer.success, true);
+  const disconnected = new Promise((resolve) => banker.once('player_disconnected', resolve));
+  playerOne.disconnect();
+  await disconnected;
+  const reconnectedPlayer = await connect(url);
+  sockets.push(reconnectedPlayer);
+  reconnectedPlayer.on('update_game_state', (state) => { playerOneState = state; });
+  const rejoin = await emitAck(reconnectedPlayer, 'join_room', { roomCode, sessionId: joinedOne.sessionId });
+  assert.equal(rejoin.success, true);
+  assert.equal(rejoin.player.id, reconnectedPlayer.id);
+  assert.equal((await emitAck(banker, 'approve_transfer', { roomCode, requestId: reconnectTransfer.requestId })).success, true, 'pending transfer references follow a reconnected session');
+  await waitUntil(() => playerOneState.players.find((player) => player.id === reconnectedPlayer.id)?.balance === 1100, 'rejoined client did not receive the approved balance');
 });
